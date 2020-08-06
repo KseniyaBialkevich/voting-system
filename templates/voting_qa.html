@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Questions and answers voting</title>
+        <style>
+            body {
+                margin-left: 5%;
+            }
+            h2 {
+                color: rgb(8, 6, 104);
+                text-align: center;
+            }
+            p {
+                text-decoration: underline;
+            }
+            .create_link:hover {
+                color: darkviolet;
+            }
+            .create_button {
+                color: black;
+                text-decoration: none;
+            }
+        </style>
+    </head>
+    <body>
+        <h2>Voting</h2>
+        <p><b>Voting name:</b></p>
+        <h3><em>{{ .Voting.Name}}</em></h3>
+        <p><b>Start and end of voting time:</b></p>
+        <div><b>Start: </b>{{ .Voting.StartTime}}<b><br>
+            End: </b>{{ .Voting.EndTime}}</div>
+        <p><b>Description:</b></p>
+        <div><em>{{ .Voting.Description}}</em></div>
+        <ol>
+            {{range .QAs}}
+            <li><b>{{ .Question.Name}}</b>
+                <ul>
+                    {{range .Answers}}
+                        <li>{{ . }}</li>
+                    {{end}}
+                </ul>
+            </li>
+        <dev><a href="/create_answer/{{ .Question.ID_Voting}}/{{ .Question.ID}}" class="create_link">Create a new answer</a></dev>
+        <br><br>
+        {{end}}
+        </ol>
+        <br>
+       <button><a href="/create_question/{{ .Voting.ID}}" class="create_button">Create a new question</a></button>
+    </body>
+</html>

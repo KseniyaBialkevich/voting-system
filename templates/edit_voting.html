@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Edit the voting</title>
+        <style>
+            body {
+                margin-left: 5%;
+            }
+    </style>
+    </head>
+    <body>
+        <h3>Edit the voting</h3>
+        <form method="POST">
+            <input type="hidden" name="id_voting" value={{ .ID}} />
+            <label>Voting name</label><br>
+            <input type="text" name="name" value="{{ .Name}}" /><br><br>
+            <label>Description</label><br>
+            <input type="text" name="description" value={{ .Description}} /><br><br>
+            <label>Start time</label><br>
+            <input type="date" name="start_time" value={{ .StartTime}} /><br><br>
+            <label>End time</label><br>
+            <input type="date" name="end_time" value={{ .EndTime}} /><br><br>
+            <input type="submit" value="Send" />
+        </form>
+    </body>
+</html>

@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Edit the question</title>
+        <style>
+            body {
+                margin-left: 5%;
+            }
+    </style>
+    </head>
+    <body>
+        <h3>Edit the question</h3>
+        <form method="POST">
+            <input type="hidden" name="id_question" value={{ .ID}} />
+            <label>Question title</label><br>
+            <input type="text" name="question" value={{ .Name}} /><br><br>
+            <input type="submit" value="Send" />
+        </form>
+    </body>
+</html>
