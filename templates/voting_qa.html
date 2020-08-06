@@ -14,6 +14,13 @@
             p {
                 text-decoration: underline;
             }
+            .edit_link {
+                color: black;
+                text-decoration: none;
+            }
+            .edit_link:hover {
+                color: darkblue
+            }
             .create_link:hover {
                 color: darkviolet;
             }
@@ -26,7 +33,7 @@
     <body>
         <h2>Voting</h2>
         <p><b>Voting name:</b></p>
-        <h3><em>{{ .Voting.Name}}</em></h3>
+        <h3><a href="/edit_voting/{{ .Voting.ID}}" class="edit_link"><em>{{ .Voting.Name}}</em></a></h3>
         <p><b>Start and end of voting time:</b></p>
         <div><b>Start: </b>{{ .Voting.StartTime}}<b><br>
             End: </b>{{ .Voting.EndTime}}</div>
@@ -34,7 +41,7 @@
         <div><em>{{ .Voting.Description}}</em></div>
         <ol>
             {{range .QAs}}
-            <li><b>{{ .Question.Name}}</b>
+            <li><a href="/edit_question/{{ .Question.ID_Voting}}/{{ .Question.ID}}" class="edit_link"><b>{{ .Question.Name}}</b></a>
                 <ul>
                     {{range .Answers}}
                         <li>{{ . }}</li>
@@ -49,3 +56,5 @@
        <button><a href="/create_question/{{ .Voting.ID}}" class="create_button">Create a new question</a></button>
     </body>
 </html>
+
+<!-- <a href="/edit_answer/{{ .Question.ID_Voting}}/{{ .Answer.ID}}" class="edit_link"></a> -->
