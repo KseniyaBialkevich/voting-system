@@ -96,7 +96,7 @@ func VotingQAHandler(w http.ResponseWriter, r *http.Request) {
 
 	type QuAns struct {
 		Question Question `json:"question"`
-		Answers  []string `json:"answers"`
+		Answers  []Answer `json:"answers"`
 	}
 
 	type VotingQA struct {
@@ -112,7 +112,6 @@ func VotingQAHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Println(err)
 		http.Error(w, http.StatusText(404), http.StatusNotFound)
-
 	}
 
 	resultQA := []QuAns{}
@@ -132,7 +131,7 @@ func VotingQAHandler(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		answers := make([]string, 0)
+		answers := []Answer{}
 
 		answersRows, err := database.Query("SELECT * FROM votingdb.answers WHERE id_question = ?", question.ID)
 		if err != nil {
@@ -148,7 +147,7 @@ func VotingQAHandler(w http.ResponseWriter, r *http.Request) {
 				fmt.Println(err)
 				continue
 			}
-			answers = append(answers, answer.Name)
+			answers = append(answers, answer)
 		}
 
 		qu_ans := QuAns{
@@ -168,6 +167,63 @@ func VotingQAHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, votingQA)
 }
 
+func OpenQAHandler(w http.ResponseWriter, r *http.Request) {
+
+	vars := mux.Vars(r)
+	id_question := vars["id_question"]
+
+	type QAs struct {
+		Question Question `json:"question"`
+		Answers  []Answer `json:"answers"`
+	}
+
+	row := database.QueryRow("SELECT * FROM votingdb.questions WHERE id = ?", id_question)
+
+	question := Question{}
+
+	err := row.Scan(&question.ID, &question.Name, &question.ID_Voting)
+	if err != nil {
+		log.Println(err)
+		http.Error(w, http.StatusText(404), http.StatusNotFound)
+	}
+
+	rows, err := database.Query("SELECT * FROM votingdb.answers WHERE id_question = ?", id_question)
+	if err != nil {
+		log.Println(err)
+	}
+
+	defer rows.Close()
+
+	answers := []Answer{}
+
+	for rows.Next() {
+		answer := Answer{}
+
+		err := rows.Scan(&answer.ID, &answer.Name, &answer.ID_Question)
+		if err != nil {
+			log.Println(err)
+		}
+
+		answers = append(answers, answer)
+	}
+
+	qas := QAs{
+		Question: question,
+		Answers:  answers,
+	}
+
+	tmpl, _ := template.ParseFiles("templates/open_qa.html")
+	tmpl.Execute(w, qas)
+}
+
+// func RedirectVotingHandler(w http.ResponseWriter, r *http.Request) {
+
+// 	vars := mux.Vars(r)
+// 	id_voting := vars["id_voting"]
+
+// 	http.Redirect(w, r, "/redirect_voting/"+id_voting, 301)
+// }
+
 func CreateQuestionHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "POST" {
 
@@ -179,9 +235,9 @@ func CreateQuestionHandler(w http.ResponseWriter, r *http.Request) {
 			fmt.Println(err)
 		}
 
-		question_name := r.FormValue("question")
+		name := r.FormValue("name")
 
-		_, err = database.Exec("INSERT INTO votingdb.questions (name, id_voting) VALUES (?, ?)", question_name, id_voting)
+		_, err = database.Exec("INSERT INTO votingdb.questions (name, id_voting) VALUES (?, ?)", name, id_voting)
 		if err != nil {
 			fmt.Println(err)
 		}
@@ -206,9 +262,9 @@ func CreateAnswerHandler(w http.ResponseWriter, r *http.Request) {
 			fmt.Println(err)
 		}
 
-		answer_name := r.FormValue("answer")
+		name := r.FormValue("name")
 
-		_, err = database.Exec("INSERT INTO votingdb.answers (name, id_question) VALUES (?, ?)", answer_name, id_question)
+		_, err = database.Exec("INSERT INTO votingdb.answers (name, id_question) VALUES (?, ?)", name, id_question)
 		if err != nil {
 			fmt.Println(err)
 		}
@@ -301,7 +357,7 @@ func EditQuestionHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			log.Println(err)
 		}
-		http.Redirect(w, r, "/voting_qa/"+id_voting, 301)
+		http.Redirect(w, r, "/open_qa/"+id_voting+id_question, 301)
 	}
 }
 
@@ -329,7 +385,7 @@ func EditAnswerHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "POST" {
 
 		vars := mux.Vars(r)
-		id_voting := vars["id_voting"]
+		id_question := vars["id_question"]
 
 		err := r.ParseForm()
 		if err != nil {
@@ -343,7 +399,7 @@ func EditAnswerHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			log.Println(err)
 		}
-		http.Redirect(w, r, "/voting_qa/"+id_voting, 301)
+		http.Redirect(w, r, "/voting_qa/"+id_question, 301)
 	}
 }
 
@@ -362,11 +418,13 @@ func main() {
 	router.HandleFunc("/", IndexHandler)
 	router.HandleFunc("/create_voting", CreateVotingHandler)
 	router.HandleFunc("/voting_qa/{id_voting:[0-9]+}", VotingQAHandler)
+	router.HandleFunc("/open_qa/{id_voting:[0-9]+}/{id_question:[0-9]+}", OpenQAHandler)
+	// router.HandleFunc("/redirect_voting/{id_voting:[0-9]+}", RedirectVotingHandler)
 	router.HandleFunc("/create_question/{id_voting:[0-9]+}", CreateQuestionHandler)
 	router.HandleFunc("/create_answer/{id_voting:[0-9]+}/{id_question:[0-9]+}", CreateAnswerHandler)
 	router.HandleFunc("/edit_voting/{id_voting:[0-9]+}", EditVotingHandler)
 	router.HandleFunc("/edit_question/{id_voting:[0-9]+}/{id_question:[0-9]+}", EditQuestionHandler)
-	router.HandleFunc("/edit_answer/{id_voting:[0-9]+}/{id_answer:[0-9]+}", EditAnswerHandler)
+	router.HandleFunc("/edit_answer/{id_question:[0-9]+}/{id_answer:[0-9]+}", EditAnswerHandler)
 
 	http.Handle("/", router)
 
