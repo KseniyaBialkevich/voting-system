@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"text/template"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -357,7 +358,7 @@ func EditQuestionHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			log.Println(err)
 		}
-		http.Redirect(w, r, "/open_qa/"+id_voting+id_question, 301)
+		http.Redirect(w, r, "/open_qa/"+id_voting+"/"+id_question, 301)
 	}
 }
 
@@ -395,11 +396,23 @@ func EditAnswerHandler(w http.ResponseWriter, r *http.Request) {
 		id_answer := r.FormValue("id_answer")
 		name := r.FormValue("name")
 
-		_, err = database.Exec("UDATE votingdb.answers set name = ? WHERE id = ?", name, id_answer)
+		_, err = database.Exec("UPDATE votingdb.answers set name = ? WHERE id = ?", name, id_answer)
 		if err != nil {
 			log.Println(err)
 		}
-		http.Redirect(w, r, "/voting_qa/"+id_question, 301)
+
+		row := database.QueryRow("SELECT * FROM votingdb.questions WHERE id = ?", id_question)
+
+		question := Question{}
+
+		err = row.Scan(&question.ID, &question.Name, &question.ID_Voting)
+		if err != nil {
+			log.Println(err)
+			http.Error(w, http.StatusText(404), http.StatusNotFound)
+		} else {
+			id_voting := strconv.Itoa(question.ID_Voting)
+			http.Redirect(w, r, "/open_qa/"+id_voting+"/"+id_question, 301)
+		}
 	}
 }
 
