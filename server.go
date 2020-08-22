@@ -416,6 +416,72 @@ func EditAnswerHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func DeleteVotingHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id_voting := vars["id_voting"]
+
+	rowsQuestions, err := database.Query("SELECT * FROM votingdb.questions WHERE id_voting = ?", id_voting)
+	if err != nil {
+		log.Println(err)
+	}
+
+	defer rowsQuestions.Close()
+
+	for rowsQuestions.Next() {
+
+		question := Question{}
+
+		err := rowsQuestions.Scan(&question.ID, &question.Name, &question.ID_Voting)
+		if err != nil {
+			log.Println(err)
+
+			continue
+		}
+
+		id_question := question.ID
+
+		rowsAnswers, err := database.Query("SELECT * FROM votingdb.answers WHERE id_question = ?", id_question)
+		if err != nil {
+			log.Println(err)
+
+			continue
+		}
+
+		defer rowsAnswers.Close()
+
+		for rowsAnswers.Next() {
+
+			answer := Answer{}
+
+			err := rowsAnswers.Scan(&answer.ID, &answer.Name, &answer.ID_Question)
+			if err != nil {
+				log.Println(err)
+
+				continue
+			}
+
+			id_answer := answer.ID
+
+			_, err = database.Exec("DELETE FROM votingdb.answers WHERE id = ?", id_answer)
+			if err != nil {
+				log.Println(err)
+			}
+		}
+
+		_, err = database.Exec("DELETE FROM votingdb.questions WHERE id = ?", id_question)
+		if err != nil {
+			log.Println(err)
+		}
+	}
+
+	_, err = database.Exec("DELETE FROM votingdb.votings WHERE id = ?", id_voting)
+	if err != nil {
+		log.Println(err)
+	}
+
+	http.Redirect(w, r, "/", 301)
+}
+
 func main() {
 
 	db, err := sql.Open("mysql", "root:11111111@tcp(localhost:3306)/votingdb")
@@ -432,13 +498,12 @@ func main() {
 	router.HandleFunc("/create_voting", CreateVotingHandler)
 	router.HandleFunc("/voting_qa/{id_voting:[0-9]+}", VotingQAHandler)
 	router.HandleFunc("/open_qa/{id_voting:[0-9]+}/{id_question:[0-9]+}", OpenQAHandler)
-	// router.HandleFunc("/redirect_voting/{id_voting:[0-9]+}", RedirectVotingHandler)
 	router.HandleFunc("/create_question/{id_voting:[0-9]+}", CreateQuestionHandler)
 	router.HandleFunc("/create_answer/{id_voting:[0-9]+}/{id_question:[0-9]+}", CreateAnswerHandler)
 	router.HandleFunc("/edit_voting/{id_voting:[0-9]+}", EditVotingHandler)
 	router.HandleFunc("/edit_question/{id_voting:[0-9]+}/{id_question:[0-9]+}", EditQuestionHandler)
 	router.HandleFunc("/edit_answer/{id_question:[0-9]+}/{id_answer:[0-9]+}", EditAnswerHandler)
-
+	router.HandleFunc("/delete_voting/{id:[0-9]+}", DeleteVotingHandler)
 	http.Handle("/", router)
 
 	fmt.Println("Server is listening...")

@@ -7,6 +7,10 @@
             body {
                 margin-left: 5%;
             }
+            .delete_button {
+                color: rgb(243, 11, 11);
+                text-decoration: none;
+            }
     </style>
     </head>
     <body>
@@ -23,5 +27,7 @@
             <input type="date" name="end_time" value={{ .EndTime}} /><br><br>
             <input type="submit" value="Send" />
         </form>
+        <br><br>
+        <button><a href="/delete_voting/{{ .ID}}" class="delete_button">Delete the voting</a></button>
     </body>
 </html>
