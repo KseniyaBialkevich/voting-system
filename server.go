@@ -217,14 +217,6 @@ func OpenQAHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, qas)
 }
 
-// func RedirectVotingHandler(w http.ResponseWriter, r *http.Request) {
-
-// 	vars := mux.Vars(r)
-// 	id_voting := vars["id_voting"]
-
-// 	http.Redirect(w, r, "/redirect_voting/"+id_voting, 301)
-// }
-
 func CreateQuestionHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "POST" {
 
@@ -420,6 +412,57 @@ func DeleteVotingHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id_voting := vars["id_voting"]
 
+	DeleteQuestion(id_voting)
+
+	_, err := database.Exec("DELETE FROM votingdb.votings WHERE id = ?", id_voting)
+	if err != nil {
+		log.Println(err)
+	}
+
+	http.Redirect(w, r, "/", 301)
+}
+
+func DeleteQuestionHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id_voting := vars["id_voting"]
+	id_question := vars["id_question"]
+
+	DeleteAnswer(id_question)
+
+	_, err := database.Exec("DELETE FROM votingdb.questions WHERE id = ?", id_question)
+	if err != nil {
+		log.Println(err)
+	}
+
+	http.Redirect(w, r, "/open_qa/"+id_voting+"/"+id_question, 301)
+}
+
+func DeleteAnswerHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id_question := vars["id_question"]
+	id_answer := vars["id_answer"]
+
+	_, err := database.Exec("DELETE FROM votingdb.answers WHERE id = ?", id_answer)
+	if err != nil {
+		log.Println(err)
+	}
+
+	row := database.QueryRow("SELECT * FROM votingdb.questions WHERE id = ?", id_question)
+
+	question := Question{}
+
+	err = row.Scan(&question.ID, &question.Name, &question.ID_Voting)
+	if err != nil {
+		log.Println(err)
+		http.Error(w, http.StatusText(404), http.StatusNotFound)
+	} else {
+		id_voting := strconv.Itoa(question.ID_Voting)
+		http.Redirect(w, r, "/open_qa/"+id_voting+"/"+id_question, 301)
+	}
+
+}
+
+func DeleteQuestion(id_voting string) {
 	rowsQuestions, err := database.Query("SELECT * FROM votingdb.questions WHERE id_voting = ?", id_voting)
 	if err != nil {
 		log.Println(err)
@@ -438,48 +481,43 @@ func DeleteVotingHandler(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		id_question := question.ID
+		id_question := strconv.Itoa(question.ID)
 
-		rowsAnswers, err := database.Query("SELECT * FROM votingdb.answers WHERE id_question = ?", id_question)
-		if err != nil {
-			log.Println(err)
-
-			continue
-		}
-
-		defer rowsAnswers.Close()
-
-		for rowsAnswers.Next() {
-
-			answer := Answer{}
-
-			err := rowsAnswers.Scan(&answer.ID, &answer.Name, &answer.ID_Question)
-			if err != nil {
-				log.Println(err)
-
-				continue
-			}
-
-			id_answer := answer.ID
-
-			_, err = database.Exec("DELETE FROM votingdb.answers WHERE id = ?", id_answer)
-			if err != nil {
-				log.Println(err)
-			}
-		}
+		DeleteAnswer(id_question)
 
 		_, err = database.Exec("DELETE FROM votingdb.questions WHERE id = ?", id_question)
 		if err != nil {
 			log.Println(err)
 		}
 	}
+}
 
-	_, err = database.Exec("DELETE FROM votingdb.votings WHERE id = ?", id_voting)
+func DeleteAnswer(id_question string) {
+	rowsAnswers, err := database.Query("SELECT * FROM votingdb.answers WHERE id_question = ?", id_question)
 	if err != nil {
 		log.Println(err)
 	}
 
-	http.Redirect(w, r, "/", 301)
+	defer rowsAnswers.Close()
+
+	for rowsAnswers.Next() {
+
+		answer := Answer{}
+
+		err := rowsAnswers.Scan(&answer.ID, &answer.Name, &answer.ID_Question)
+		if err != nil {
+			log.Println(err)
+
+			continue
+		}
+
+		id_answer := answer.ID
+
+		_, err = database.Exec("DELETE FROM votingdb.answers WHERE id = ?", id_answer)
+		if err != nil {
+			log.Println(err)
+		}
+	}
 }
 
 func main() {
@@ -503,7 +541,9 @@ func main() {
 	router.HandleFunc("/edit_voting/{id_voting:[0-9]+}", EditVotingHandler)
 	router.HandleFunc("/edit_question/{id_voting:[0-9]+}/{id_question:[0-9]+}", EditQuestionHandler)
 	router.HandleFunc("/edit_answer/{id_question:[0-9]+}/{id_answer:[0-9]+}", EditAnswerHandler)
-	router.HandleFunc("/delete_voting/{id:[0-9]+}", DeleteVotingHandler)
+	router.HandleFunc("/delete_voting/{id_voting:[0-9]+}", DeleteVotingHandler)
+	router.HandleFunc("/delete_question/{id_question:[0-9]+}", DeleteQuestionHandler)
+	router.HandleFunc("/delete_answer/{id_answer:[0-9]+}", DeleteAnswerHandler)
 	http.Handle("/", router)
 
 	fmt.Println("Server is listening...")
