@@ -424,42 +424,65 @@ func DeleteVotingHandler(w http.ResponseWriter, r *http.Request) {
 
 func DeleteQuestionHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	id_voting := vars["id_voting"]
 	id_question := vars["id_question"]
+
+	var idVoting int
+	row_voting := database.QueryRow("SELECT id_voting FROM votingdb.questions WHERE id = ?", id_question)
+	err := row_voting.Scan(&idVoting)
+	if err != nil {
+		log.Println(err)
+		http.Error(w, http.StatusText(404), http.StatusNotFound)
+	}
 
 	DeleteAnswer(id_question)
 
-	_, err := database.Exec("DELETE FROM votingdb.questions WHERE id = ?", id_question)
+	_, err = database.Exec("DELETE FROM votingdb.questions WHERE id = ?", id_question)
 	if err != nil {
 		log.Println(err)
 	}
 
-	http.Redirect(w, r, "/open_qa/"+id_voting+"/"+id_question, 301)
+	id_voting := strconv.Itoa(idVoting)
+
+	http.Redirect(w, r, "/voting_qa/"+id_voting, 301)
 }
 
 func DeleteAnswerHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	id_question := vars["id_question"]
 	id_answer := vars["id_answer"]
 
-	_, err := database.Exec("DELETE FROM votingdb.answers WHERE id = ?", id_answer)
-	if err != nil {
-		log.Println(err)
-	}
+	fmt.Println("id_answer: ", id_answer)
 
-	row := database.QueryRow("SELECT * FROM votingdb.questions WHERE id = ?", id_question)
-
-	question := Question{}
-
-	err = row.Scan(&question.ID, &question.Name, &question.ID_Voting)
+	var idQuestion int
+	row_queestion := database.QueryRow("SELECT id_question FROM votingdb.answers WHERE id = ?", id_answer)
+	err := row_queestion.Scan(&idQuestion)
 	if err != nil {
 		log.Println(err)
 		http.Error(w, http.StatusText(404), http.StatusNotFound)
-	} else {
-		id_voting := strconv.Itoa(question.ID_Voting)
-		http.Redirect(w, r, "/open_qa/"+id_voting+"/"+id_question, 301)
 	}
 
+	fmt.Println("idQuestion: ", idQuestion)
+
+	var idVoting int
+	row_answer := database.QueryRow("SELECT id_voting FROM votingdb.questions WHERE id = ?", idQuestion)
+	err = row_answer.Scan(&idVoting)
+	if err != nil {
+		log.Println(err)
+		http.Error(w, http.StatusText(404), http.StatusNotFound)
+	}
+
+	fmt.Println("idVoting: ", idVoting)
+
+	_, err = database.Exec("DELETE FROM votingdb.answers WHERE id = ?", id_answer)
+	if err != nil {
+		log.Println(err)
+	}
+
+	id_voting := strconv.Itoa(idVoting)
+	id_question := strconv.Itoa(idQuestion)
+
+	fmt.Println("id_voting/id_question: ", id_voting+"/"+id_question)
+
+	http.Redirect(w, r, "/open_qa/"+id_voting+"/"+id_question, 301)
 }
 
 func DeleteQuestion(id_voting string) {
