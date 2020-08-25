@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -32,7 +33,49 @@ type Answer struct {
 	ID_Question int    `json:"id_question"`
 }
 
+type Patricipant struct {
+	ID      int    `json:"id"`
+	Name    string `json:"name"`
+	Surname string `json:"surname"`
+	Adress  string `json:"adress"`
+}
+
+type Autorisation struct {
+	ID             int    `json:"id"`
+	Login          string `json:"login"`
+	Password       int    `json:"password"`
+	ID_Patricipant int    `json:"id_patricipant"`
+}
+
 var database *sql.DB
+
+func AutorisationHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "POST" {
+		err := r.ParseForm()
+		login := r.FormValue("login")
+		password := r.FormValue("password")
+
+		passw, _ := strconv.Atoi(password)
+
+		row := database.QueryRow("SELECT * FROM votingdb.autorisation WHERE login = ?", login)
+
+		autorisation := Autorisation{}
+		err = row.Scan(&autorisation.ID, &autorisation.Login, &autorisation.Password, &autorisation.ID_Patricipant)
+		if err != nil {
+			log.Println(err)
+			http.Error(w, http.StatusText(404), http.StatusNotFound)
+		} else {
+			if passw == autorisation.Password {
+				http.Redirect(w, r, "/", 301)
+			} else {
+				errors.New("login or password entered incorrectly")
+			}
+		}
+
+	} else {
+		http.ServeFile(w, r, "templates/autorisation.html")
+	}
+}
 
 func IndexHandler(w http.ResponseWriter, r *http.Request) {
 	rows, err := database.Query("SELECT * FROM votingdb.votings")
@@ -555,6 +598,7 @@ func main() {
 	defer db.Close()
 
 	router := mux.NewRouter()
+	router.HandleFunc("/autorisation", AutorisationHandler)
 	router.HandleFunc("/", IndexHandler)
 	router.HandleFunc("/create_voting", CreateVotingHandler)
 	router.HandleFunc("/voting_qa/{id_voting:[0-9]+}", VotingQAHandler)
