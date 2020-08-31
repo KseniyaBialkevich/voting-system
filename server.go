@@ -1,13 +1,16 @@
 package main
 
 import (
+	"crypto/md5"
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
 	"text/template"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/mux"
@@ -40,7 +43,7 @@ type Patricipant struct {
 	Adress  string `json:"adress"`
 }
 
-type Autorisation struct {
+type Authentication struct {
 	ID             int    `json:"id"`
 	Login          string `json:"login"`
 	Password       int    `json:"password"`
@@ -49,7 +52,14 @@ type Autorisation struct {
 
 var database *sql.DB
 
-func AutorisationHandler(w http.ResponseWriter, r *http.Request) {
+type MyAppToken struct {
+	Authentication Authentication
+	ExpitedTime    time.Time
+}
+
+var myAppTokenList = make(map[string]MyAppToken)
+
+func AuthenticationHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "POST" {
 		err := r.ParseForm()
 		login := r.FormValue("login")
@@ -57,15 +67,26 @@ func AutorisationHandler(w http.ResponseWriter, r *http.Request) {
 
 		passw, _ := strconv.Atoi(password)
 
-		row := database.QueryRow("SELECT * FROM votingdb.autorisation WHERE login = ?", login)
+		row := database.QueryRow("SELECT * FROM votingdb.authentication WHERE login = ?", login)
 
-		autorisation := Autorisation{}
-		err = row.Scan(&autorisation.ID, &autorisation.Login, &autorisation.Password, &autorisation.ID_Patricipant)
+		authentication := Authentication{}
+		err = row.Scan(&authentication.ID, &authentication.Login, &authentication.Password, &authentication.ID_Patricipant)
 		if err != nil {
 			log.Println(err)
 			http.Error(w, http.StatusText(404), http.StatusNotFound)
 		} else {
-			if passw == autorisation.Password {
+			if passw == authentication.Password {
+				myAppToken := MyAppToken{Authentication: authentication, ExpitedTime: time.Now()}
+				myAppTokenStr := fmt.Sprintf("%#v", myAppToken)
+				//fmt.Printf("%s \n", myAppTokenStr)
+				h := md5.New()
+				io.WriteString(h, myAppTokenStr)
+				hash := h.Sum(nil)
+				hashStr := fmt.Sprintf("%x", hash)
+				//fmt.Println(hashStr)
+				myAppTokenList[hashStr] = MyAppToken{Authentication: authentication, ExpitedTime: time.Now()}
+				cookie := http.Cookie{Name: "my_app_token", Value: hashStr}
+				http.SetCookie(w, &cookie)
 				http.Redirect(w, r, "/", 301)
 			} else {
 				errors.New("login or password entered incorrectly")
@@ -73,11 +94,20 @@ func AutorisationHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 	} else {
-		http.ServeFile(w, r, "templates/autorisation.html")
+		http.ServeFile(w, r, "templates/authentication.html")
 	}
 }
 
 func IndexHandler(w http.ResponseWriter, r *http.Request) {
+	var cookie, _ = r.Cookie("my_app_token")
+	fmt.Printf("%#v \n", cookie)
+	cookieValue := cookie.Value
+	myAppToken := myAppTokenList[cookieValue]
+	fmt.Printf("%#v \n", myAppToken)
+	// http.Cookie.readCookies()
+	// cookie, err := http.Cookie("session_token")
+	// myAppTokenList
+
 	rows, err := database.Query("SELECT * FROM votingdb.votings")
 	if err != nil {
 		log.Println(err)
@@ -598,7 +628,7 @@ func main() {
 	defer db.Close()
 
 	router := mux.NewRouter()
-	router.HandleFunc("/autorisation", AutorisationHandler)
+	router.HandleFunc("/authentication", AuthenticationHandler)
 	router.HandleFunc("/", IndexHandler)
 	router.HandleFunc("/create_voting", CreateVotingHandler)
 	router.HandleFunc("/voting_qa/{id_voting:[0-9]+}", VotingQAHandler)

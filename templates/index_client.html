@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Votings</title>
+        <style>
+            body {
+                margin-left: 5%;
+            }
+            .create_link:hover {
+                color: darkviolet;
+            }
+            .name {
+                color: black;
+                text-decoration: none;
+            }
+            .name:hover {
+                text-decoration: underline;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>Please select a vote</h1>
+        <h2>The list of votes</h2>
+        <table>
+            <thead><th>Voting</th><th>Description</th><th>Start time</th><th>End time</th></thead>
+            {{range . }}
+            <tr>
+                <td><a href="/voting_qa/{{ .ID}}" class="name">{{ .Name}}</a></td>
+                <td>{{ .Description}}</td>
+                <td>{{ .StartTime}}</td>
+                <td>{{ .EndTime}}</td>
+            </tr>
+            {{end}}
+        </table>
+    </body>
+</html>
