@@ -1,11 +1,9 @@
 package main
 
 import (
-	"crypto/md5"
 	"database/sql"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -50,12 +48,12 @@ type Authentication struct {
 	ID_Patricipant int    `json:"id_patricipant"`
 }
 
-var database *sql.DB
-
 type MyAppToken struct {
 	Authentication Authentication
 	ExpitedTime    time.Time
 }
+
+var database *sql.DB
 
 var myAppTokenList = make(map[string]MyAppToken)
 
@@ -76,18 +74,24 @@ func AuthenticationHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, http.StatusText(404), http.StatusNotFound)
 		} else {
 			if passw == authentication.Password {
-				myAppToken := MyAppToken{Authentication: authentication, ExpitedTime: time.Now()}
-				myAppTokenStr := fmt.Sprintf("%#v", myAppToken)
+				//myAppToken := MyAppToken{Authentication: authentication, ExpitedTime: time.Now()}
+				//myAppTokenStr := fmt.Sprintf("%#v", myAppToken)
 				//fmt.Printf("%s \n", myAppTokenStr)
-				h := md5.New()
-				io.WriteString(h, myAppTokenStr)
-				hash := h.Sum(nil)
-				hashStr := fmt.Sprintf("%x", hash)
+				//h := md5.New()
+				//io.WriteString(h, myAppTokenStr)
+				//hash := h.Sum(nil)
+				//hashStr := fmt.Sprintf("%x", hash)
 				//fmt.Println(hashStr)
-				myAppTokenList[hashStr] = MyAppToken{Authentication: authentication, ExpitedTime: time.Now()}
-				cookie := http.Cookie{Name: "my_app_token", Value: hashStr}
+				//myAppTokenList[hashStr] = MyAppToken{Authentication: authentication, ExpitedTime: time.Now()}
+				//cookie := http.Cookie{Name: "my_app_token", Value: hashStr}
+				//http.SetCookie(w, &cookie)
+
+				expiration := time.Now().Add(3 * 24 * time.Hour)
+				cookie := http.Cookie{Name: "username", Value: "astaxie", Path: "/", Expires: expiration, Secure: true, HttpOnly: true}
+				fmt.Printf("%#v \n", cookie)
 				http.SetCookie(w, &cookie)
-				http.Redirect(w, r, "/", 301)
+
+				http.Redirect(w, r, "/index_client", 301)
 			} else {
 				errors.New("login or password entered incorrectly")
 			}
@@ -96,6 +100,49 @@ func AuthenticationHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		http.ServeFile(w, r, "templates/authentication.html")
 	}
+}
+
+func IndexClientHandler(w http.ResponseWriter, r *http.Request) {
+	//var cookie, _ = r.Cookie("my_app_token")
+	//fmt.Printf("%#v \n", cookie)
+	//cookieValue := cookie.Value
+	//myAppToken := myAppTokenList[cookieValue]
+	//fmt.Printf("%#v \n", myAppToken)
+	// http.Cookie.readCookies()
+	// cookie, err := http.Cookie("session_token")
+	// myAppTokenList
+
+	cookie, _ := r.Cookie("username")
+	fmt.Printf("%#v \n", cookie)
+
+	rows, err := database.Query("SELECT * FROM votingdb.votings")
+	if err != nil {
+		log.Println(err)
+	}
+
+	defer rows.Close()
+
+	votings := []Voting{}
+
+	for rows.Next() {
+		voting := Voting{}
+
+		err := rows.Scan(&voting.ID, &voting.Name, &voting.Description, &voting.StartTime, &voting.EndTime)
+		if err != nil {
+			log.Println(err)
+
+			continue
+		}
+
+		votings = append(votings, voting)
+	}
+
+	tmpl, err := template.ParseFiles("templates/index_client.html")
+	if err != nil {
+		log.Println(err)
+	}
+
+	tmpl.Execute(w, votings)
 }
 
 func IndexHandler(w http.ResponseWriter, r *http.Request) {
@@ -630,6 +677,7 @@ func main() {
 	router := mux.NewRouter()
 	router.HandleFunc("/authentication", AuthenticationHandler)
 	router.HandleFunc("/", IndexHandler)
+	router.HandleFunc("/index_client", IndexClientHandler)
 	router.HandleFunc("/create_voting", CreateVotingHandler)
 	router.HandleFunc("/voting_qa/{id_voting:[0-9]+}", VotingQAHandler)
 	router.HandleFunc("/open_qa/{id_voting:[0-9]+}/{id_question:[0-9]+}", OpenQAHandler)
