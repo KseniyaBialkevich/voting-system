@@ -2,7 +2,6 @@ package main
 
 import (
 	"database/sql"
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -12,6 +11,7 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/mux"
+	"github.com/gorilla/securecookie"
 )
 
 type Voting struct {
@@ -55,6 +55,8 @@ type MyAppToken struct {
 
 var database *sql.DB
 
+var sc *securecookie.SecureCookie
+
 var myAppTokenList = make(map[string]MyAppToken)
 
 func AuthenticationHandler(w http.ResponseWriter, r *http.Request) {
@@ -86,14 +88,35 @@ func AuthenticationHandler(w http.ResponseWriter, r *http.Request) {
 				//cookie := http.Cookie{Name: "my_app_token", Value: hashStr}
 				//http.SetCookie(w, &cookie)
 
-				expiration := time.Now().Add(3 * 24 * time.Hour)
-				cookie := http.Cookie{Name: "username", Value: "astaxie", Path: "/", Expires: expiration, Secure: true, HttpOnly: true}
-				fmt.Printf("%#v \n", cookie)
+				hashKey := []byte("very-secret")
+				fmt.Printf("hashKey: %#v \n", hashKey)
+				//var blockKey = []byte("a-lot-secret")
+				//fmt.Printf("blockKey: %#v \n", blockKey)
+				sc := securecookie.New(hashKey, nil)
+				fmt.Printf("sc: %#v \n", sc)
+
+				encoded, err := sc.Encode("cookie-name", "cookie-value")
+				fmt.Printf("encoded: %#v \n", encoded)
+				if err != nil {
+					log.Println(err)
+				}
+
+				cookie := http.Cookie{
+					Name:     "cookie-name",
+					Value:    encoded,
+					Path:     "/",
+					Expires:  time.Now().Add(3 * 24 * time.Hour),
+					Secure:   true,
+					HttpOnly: true,
+				}
+
 				http.SetCookie(w, &cookie)
+				fmt.Printf("cookie: %#v \n", cookie)
 
 				http.Redirect(w, r, "/index_client", 301)
 			} else {
-				errors.New("login or password entered incorrectly")
+				http.Error(w, "login or password entered incorrectly", 400)
+				return
 			}
 		}
 
@@ -689,8 +712,45 @@ func main() {
 	router.HandleFunc("/delete_voting/{id_voting:[0-9]+}", DeleteVotingHandler)
 	router.HandleFunc("/delete_question/{id_question:[0-9]+}", DeleteQuestionHandler)
 	router.HandleFunc("/delete_answer/{id_answer:[0-9]+}", DeleteAnswerHandler)
+
+	router.Use(cookieMiddleware)
+
 	http.Handle("/", router)
 
 	fmt.Println("Server is listening...")
-	http.ListenAndServe(":8080", nil)
+	err = http.ListenAndServe(":8080", router)
+	if err != nil {
+		log.Println("HTTP Server Error - ", err)
+	}
+}
+
+func ReadCookieHandler(w http.ResponseWriter, r *http.Request) {
+	cookie, err := r.Cookie("cookie-name")
+	if err != nil {
+		log.Println(err)
+	}
+	fmt.Printf("Read cookie: %#v \n", cookie)
+
+	var value string
+	fmt.Printf("Read sc: %#v \n", sc)
+	fmt.Printf("Read cookie.Value: %#v \n", cookie.Value)
+	err = sc.Decode("cookie-name", cookie.Value, &value)
+	if err != nil {
+		log.Println(err)
+	}
+	fmt.Printf("Read value: %#v \n", value)
+}
+
+func cookieMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cookie, err := r.Cookie("cookie-name")
+		if err != nil {
+			log.Println(err)
+		}
+		fmt.Printf("Read cookie: %#v \n", cookie)
+
+		log.Println(r.RequestURI)
+		// Call the next handler, which can be another middleware in the chain, or the final handler.
+		next.ServeHTTP(w, r)
+	})
 }
