@@ -48,16 +48,47 @@ type Authentication struct {
 	ID_Patricipant int    `json:"id_patricipant"`
 }
 
-type MyAppToken struct {
-	Authentication Authentication
-	ExpitedTime    time.Time
-}
-
 var database *sql.DB
 
 var sc *securecookie.SecureCookie
 
-var myAppTokenList = make(map[string]MyAppToken)
+var myToken = make(map[string]int)
+
+func cookieMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := r.RequestURI
+
+		if path == "/authentication" {
+			next.ServeHTTP(w, r)
+		} else {
+			cookie, err := r.Cookie("cookie-name")
+			if err != nil {
+				log.Println(err)
+			}
+
+			_, isExist := myToken[cookie.Value] //userID
+
+			if isExist {
+				next.ServeHTTP(w, r)
+			} else {
+				http.Redirect(w, r, "/authentication", 301)
+			}
+		}
+
+		// var value string
+		// err = sc.Decode("cookie-name", cookie.Value, &value)
+		// if err != nil {
+		// 	log.Println(err)
+		// }
+		// next.ServeHTTP(w, r)
+	})
+}
+
+func LogOut(w http.ResponseWriter, r *http.Request) { //TODO
+	cookie, _ := r.Cookie("cookie-name")
+	delete(myToken, cookie.Value)
+	http.Redirect(w, r, "/authentication", 301)
+}
 
 func AuthenticationHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "POST" {
@@ -76,30 +107,16 @@ func AuthenticationHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, http.StatusText(404), http.StatusNotFound)
 		} else {
 			if passw == authentication.Password {
-				//myAppToken := MyAppToken{Authentication: authentication, ExpitedTime: time.Now()}
-				//myAppTokenStr := fmt.Sprintf("%#v", myAppToken)
-				//fmt.Printf("%s \n", myAppTokenStr)
-				//h := md5.New()
-				//io.WriteString(h, myAppTokenStr)
-				//hash := h.Sum(nil)
-				//hashStr := fmt.Sprintf("%x", hash)
-				//fmt.Println(hashStr)
-				//myAppTokenList[hashStr] = MyAppToken{Authentication: authentication, ExpitedTime: time.Now()}
-				//cookie := http.Cookie{Name: "my_app_token", Value: hashStr}
-				//http.SetCookie(w, &cookie)
-
 				hashKey := []byte("very-secret")
-				fmt.Printf("hashKey: %#v \n", hashKey)
 				//var blockKey = []byte("a-lot-secret")
-				//fmt.Printf("blockKey: %#v \n", blockKey)
 				sc := securecookie.New(hashKey, nil)
-				fmt.Printf("sc: %#v \n", sc)
 
 				encoded, err := sc.Encode("cookie-name", "cookie-value")
-				fmt.Printf("encoded: %#v \n", encoded)
 				if err != nil {
 					log.Println(err)
 				}
+
+				myToken[encoded] = authentication.ID_Patricipant
 
 				cookie := http.Cookie{
 					Name:     "cookie-name",
@@ -111,7 +128,6 @@ func AuthenticationHandler(w http.ResponseWriter, r *http.Request) {
 				}
 
 				http.SetCookie(w, &cookie)
-				fmt.Printf("cookie: %#v \n", cookie)
 
 				http.Redirect(w, r, "/index_client", 301)
 			} else {
@@ -126,18 +142,6 @@ func AuthenticationHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func IndexClientHandler(w http.ResponseWriter, r *http.Request) {
-	//var cookie, _ = r.Cookie("my_app_token")
-	//fmt.Printf("%#v \n", cookie)
-	//cookieValue := cookie.Value
-	//myAppToken := myAppTokenList[cookieValue]
-	//fmt.Printf("%#v \n", myAppToken)
-	// http.Cookie.readCookies()
-	// cookie, err := http.Cookie("session_token")
-	// myAppTokenList
-
-	cookie, _ := r.Cookie("username")
-	fmt.Printf("%#v \n", cookie)
-
 	rows, err := database.Query("SELECT * FROM votingdb.votings")
 	if err != nil {
 		log.Println(err)
@@ -169,15 +173,6 @@ func IndexClientHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func IndexHandler(w http.ResponseWriter, r *http.Request) {
-	var cookie, _ = r.Cookie("my_app_token")
-	fmt.Printf("%#v \n", cookie)
-	cookieValue := cookie.Value
-	myAppToken := myAppTokenList[cookieValue]
-	fmt.Printf("%#v \n", myAppToken)
-	// http.Cookie.readCookies()
-	// cookie, err := http.Cookie("session_token")
-	// myAppTokenList
-
 	rows, err := database.Query("SELECT * FROM votingdb.votings")
 	if err != nil {
 		log.Println(err)
@@ -687,7 +682,6 @@ func DeleteAnswer(id_question string) {
 }
 
 func main() {
-
 	db, err := sql.Open("mysql", "root:11111111@tcp(localhost:3306)/votingdb")
 	if err != nil {
 		log.Println(err)
@@ -699,6 +693,8 @@ func main() {
 
 	router := mux.NewRouter()
 	router.HandleFunc("/authentication", AuthenticationHandler)
+	router.HandleFunc("/logout", LogOut)
+
 	router.HandleFunc("/", IndexHandler)
 	router.HandleFunc("/index_client", IndexClientHandler)
 	router.HandleFunc("/create_voting", CreateVotingHandler)
@@ -712,45 +708,14 @@ func main() {
 	router.HandleFunc("/delete_voting/{id_voting:[0-9]+}", DeleteVotingHandler)
 	router.HandleFunc("/delete_question/{id_question:[0-9]+}", DeleteQuestionHandler)
 	router.HandleFunc("/delete_answer/{id_answer:[0-9]+}", DeleteAnswerHandler)
+	http.Handle("/", router)
 
 	router.Use(cookieMiddleware)
 
-	http.Handle("/", router)
-
 	fmt.Println("Server is listening...")
+
 	err = http.ListenAndServe(":8080", router)
 	if err != nil {
 		log.Println("HTTP Server Error - ", err)
 	}
-}
-
-func ReadCookieHandler(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie("cookie-name")
-	if err != nil {
-		log.Println(err)
-	}
-	fmt.Printf("Read cookie: %#v \n", cookie)
-
-	var value string
-	fmt.Printf("Read sc: %#v \n", sc)
-	fmt.Printf("Read cookie.Value: %#v \n", cookie.Value)
-	err = sc.Decode("cookie-name", cookie.Value, &value)
-	if err != nil {
-		log.Println(err)
-	}
-	fmt.Printf("Read value: %#v \n", value)
-}
-
-func cookieMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		cookie, err := r.Cookie("cookie-name")
-		if err != nil {
-			log.Println(err)
-		}
-		fmt.Printf("Read cookie: %#v \n", cookie)
-
-		log.Println(r.RequestURI)
-		// Call the next handler, which can be another middleware in the chain, or the final handler.
-		next.ServeHTTP(w, r)
-	})
 }
