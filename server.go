@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"database/sql"
 	"fmt"
 	"log"
@@ -44,7 +45,7 @@ type Patricipant struct {
 type Authentication struct {
 	ID             int    `json:"id"`
 	Login          string `json:"login"`
-	Password       int    `json:"password"`
+	Password       string `json:"password"`
 	ID_Patricipant int    `json:"id_patricipant"`
 }
 
@@ -56,6 +57,7 @@ var myToken = make(map[string]int)
 
 func cookieMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
 		path := r.RequestURI
 
 		if path == "/authentication" {
@@ -74,13 +76,6 @@ func cookieMiddleware(next http.Handler) http.Handler {
 				http.Redirect(w, r, "/authentication", 301)
 			}
 		}
-
-		// var value string
-		// err = sc.Decode("cookie-name", cookie.Value, &value)
-		// if err != nil {
-		// 	log.Println(err)
-		// }
-		// next.ServeHTTP(w, r)
 	})
 }
 
@@ -94,9 +89,9 @@ func AuthenticationHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "POST" {
 		err := r.ParseForm()
 		login := r.FormValue("login")
-		password := r.FormValue("password")
+		passwordHash := sha256.Sum256([]byte(r.FormValue("password")))
 
-		passw, _ := strconv.Atoi(password)
+		password := fmt.Sprintf("%x", passwordHash)
 
 		row := database.QueryRow("SELECT * FROM votingdb.authentication WHERE login = ?", login)
 
@@ -106,21 +101,17 @@ func AuthenticationHandler(w http.ResponseWriter, r *http.Request) {
 			log.Println(err)
 			http.Error(w, http.StatusText(404), http.StatusNotFound)
 		} else {
-			if passw == authentication.Password {
-				hashKey := []byte("very-secret")
-				//var blockKey = []byte("a-lot-secret")
-				sc := securecookie.New(hashKey, nil)
+			if password == authentication.Password {
 
-				encoded, err := sc.Encode("cookie-name", "cookie-value")
-				if err != nil {
-					log.Println(err)
-				}
+				hash := sha256.New()
+				hash.Write([]byte("hello\n" + login))
+				hashKey := fmt.Sprintf("%x", hash.Sum(nil))
 
-				myToken[encoded] = authentication.ID_Patricipant
+				myToken[hashKey] = authentication.ID_Patricipant
 
 				cookie := http.Cookie{
 					Name:     "cookie-name",
-					Value:    encoded,
+					Value:    hashKey,
 					Path:     "/",
 					Expires:  time.Now().Add(3 * 24 * time.Hour),
 					Secure:   true,
