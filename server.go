@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"fmt"
@@ -8,11 +9,9 @@ import (
 	"net/http"
 	"strconv"
 	"text/template"
-	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/mux"
-	"github.com/gorilla/securecookie"
 )
 
 type Voting struct {
@@ -51,8 +50,6 @@ type Authentication struct {
 
 var database *sql.DB
 
-var sc *securecookie.SecureCookie
-
 var myToken = make(map[string]int)
 
 func cookieMiddleware(next http.Handler) http.Handler {
@@ -71,7 +68,10 @@ func cookieMiddleware(next http.Handler) http.Handler {
 			_, isExist := myToken[cookie.Value] //userID
 
 			if isExist {
-				next.ServeHTTP(w, r)
+				oldContext := r.Context()
+				newContext := context.WithValue(oldContext, "user", "test")
+				next.ServeHTTP(w, r.WithContext(newContext))
+				// next.ServeHTTP(w, r)
 			} else {
 				http.Redirect(w, r, "/authentication", 301)
 			}
@@ -110,16 +110,17 @@ func AuthenticationHandler(w http.ResponseWriter, r *http.Request) {
 				myToken[hashKey] = authentication.ID_Patricipant
 
 				cookie := http.Cookie{
-					Name:     "cookie-name",
-					Value:    hashKey,
-					Path:     "/",
-					Expires:  time.Now().Add(3 * 24 * time.Hour),
-					Secure:   true,
-					HttpOnly: true,
+					Name:  "cookie-name",
+					Value: hashKey,
+					// Path:     "/",
+					// Expires:  time.Now().Add(3 * 24 * time.Hour),
+					// Secure:   true,
+					// HttpOnly: true,
 				}
 
 				http.SetCookie(w, &cookie)
 
+				http.SetCookie(w, &cookie)
 				http.Redirect(w, r, "/index_client", 301)
 			} else {
 				http.Error(w, "login or password entered incorrectly", 400)
@@ -164,6 +165,9 @@ func IndexClientHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func IndexHandler(w http.ResponseWriter, r *http.Request) {
+	context := r.Context().Value("user")
+	fmt.Println("context: ", context)
+
 	rows, err := database.Query("SELECT * FROM votingdb.votings")
 	if err != nil {
 		log.Println(err)
