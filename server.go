@@ -14,6 +14,13 @@ import (
 	"github.com/gorilla/mux"
 )
 
+type rolesType string
+
+const (
+	UserRole  rolesType = "user"
+	AdminRole           = "admin"
+)
+
 type Voting struct {
 	ID          int    `json:"id"`
 	Name        string `json:"name"`
@@ -34,23 +41,26 @@ type Answer struct {
 	ID_Question int    `json:"id_question"`
 }
 
-type Patricipant struct {
-	ID      int    `json:"id"`
-	Name    string `json:"name"`
-	Surname string `json:"surname"`
-	Adress  string `json:"adress"`
+type User struct {
+	ID      int       `json:"id"`
+	Name    string    `json:"name"`
+	Surname string    `json:"surname"`
+	Adress  string    `json:"adress"`
+	Role    rolesType `json: "role"`
 }
 
 type Authentication struct {
-	ID             int    `json:"id"`
-	Login          string `json:"login"`
-	Password       string `json:"password"`
-	ID_Patricipant int    `json:"id_patricipant"`
+	ID       int    `json:"id"`
+	Login    string `json:"login"`
+	Password string `json:"password"`
+	ID_User  int    `json:"id_user"`
 }
 
 var database *sql.DB
 
 var myToken = make(map[string]int)
+var userLinks = make([]string, 0)
+var adminLinks = make([]string, 0)
 
 func cookieMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -65,13 +75,43 @@ func cookieMiddleware(next http.Handler) http.Handler {
 				log.Println(err)
 			}
 
-			_, isExist := myToken[cookie.Value] //userID
+			userID, isExist := myToken[cookie.Value]
 
 			if isExist {
+				var userRole rolesType
+
+				row_role := database.QueryRow("SELECT role FROM votingdb.users WHERE id = ?", userID)
+
+				err := row_role.Scan(&userRole)
+				if err != nil {
+					log.Println(err)
+					http.Error(w, http.StatusText(404), http.StatusNotFound)
+				}
+
+				fmt.Println("userRole: ", userRole)
+
 				oldContext := r.Context()
-				newContext := context.WithValue(oldContext, "user", "test")
-				next.ServeHTTP(w, r.WithContext(newContext))
-				// next.ServeHTTP(w, r)
+				newContext := context.WithValue(oldContext, "role", userRole)
+
+				switch userRole {
+				case UserRole:
+					for _, linkPath := range userLinks {
+						if path == linkPath {
+							next.ServeHTTP(w, r.WithContext(newContext))
+							//next.ServeHTTP(w, r)
+						}
+					}
+				case AdminRole:
+					for _, linkPath := range adminLinks {
+						if path == linkPath {
+							next.ServeHTTP(w, r.WithContext(newContext))
+							//next.ServeHTTP(w, r)
+						}
+					}
+				default:
+					http.Redirect(w, r, "/authentication", 301)
+				}
+				//next.ServeHTTP(w, r)
 			} else {
 				http.Redirect(w, r, "/authentication", 301)
 			}
@@ -96,7 +136,7 @@ func AuthenticationHandler(w http.ResponseWriter, r *http.Request) {
 		row := database.QueryRow("SELECT * FROM votingdb.authentication WHERE login = ?", login)
 
 		authentication := Authentication{}
-		err = row.Scan(&authentication.ID, &authentication.Login, &authentication.Password, &authentication.ID_Patricipant)
+		err = row.Scan(&authentication.ID, &authentication.Login, &authentication.Password, &authentication.ID_User)
 		if err != nil {
 			log.Println(err)
 			http.Error(w, http.StatusText(404), http.StatusNotFound)
@@ -107,7 +147,7 @@ func AuthenticationHandler(w http.ResponseWriter, r *http.Request) {
 				hash.Write([]byte("hello\n" + login))
 				hashKey := fmt.Sprintf("%x", hash.Sum(nil))
 
-				myToken[hashKey] = authentication.ID_Patricipant
+				myToken[hashKey] = authentication.ID_User
 
 				cookie := http.Cookie{
 					Name:  "cookie-name",
@@ -121,7 +161,19 @@ func AuthenticationHandler(w http.ResponseWriter, r *http.Request) {
 				http.SetCookie(w, &cookie)
 
 				http.SetCookie(w, &cookie)
-				http.Redirect(w, r, "/index_client", 301)
+
+				context_role := r.Context().Value("role")
+
+				fmt.Println("context_role: ", context_role)
+
+				switch context_role {
+				case UserRole:
+					http.Redirect(w, r, "/index_client", 301)
+				case AdminRole:
+					http.Redirect(w, r, "/", 301)
+				}
+
+				//http.Redirect(w, r, "/index_client", 301)
 			} else {
 				http.Error(w, "login or password entered incorrectly", 400)
 				return
@@ -165,9 +217,6 @@ func IndexClientHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func IndexHandler(w http.ResponseWriter, r *http.Request) {
-	context := r.Context().Value("user")
-	fmt.Println("context: ", context)
-
 	rows, err := database.Query("SELECT * FROM votingdb.votings")
 	if err != nil {
 		log.Println(err)
@@ -685,6 +734,9 @@ func main() {
 	database = db
 
 	defer db.Close()
+
+	userLinks = []string{"/index_client"}
+	adminLinks = []string{"/", "/create_voting"}
 
 	router := mux.NewRouter()
 	router.HandleFunc("/authentication", AuthenticationHandler)
