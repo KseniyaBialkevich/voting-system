@@ -69,15 +69,15 @@
     </head>
     <body>
         <ol>
-            <li><a href="/edit_question/{{ .Question.ID_Voting}}/{{ .Question.ID}}" class="edit_link"><b>{{ .Question.Name}}</b><span class="tooltiptext">Edit</span></a>
+            <li><a href="/admin/edit_question/{{ .Question.ID_Voting}}/{{ .Question.ID}}" class="edit_link"><b>{{ .Question.Name}}</b><span class="tooltiptext">Edit</span></a>
                 <ul>
                     {{range .Answers}}
-                        <li><a href="/edit_answer/{{ .ID_Question}}/{{ .ID}}" class="edit_link">{{ .Name}}</a></li>
+                        <li><a href="/admin/edit_answer/{{ .ID_Question}}/{{ .ID}}" class="edit_link">{{ .Name}}</a></li>
                     {{end}}
                 </ul>
             </li>
         </ol>
         <br>
-       <button><a href="/voting_qa/{{ .Question.ID_Voting}}" class="create_button">Return</a></button>
+       <button><a href="/admin/voting_qa/{{ .Question.ID_Voting}}" class="create_button">Return</a></button>
     </body>
 </html>

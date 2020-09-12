@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"text/template"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -59,8 +60,6 @@ type Authentication struct {
 var database *sql.DB
 
 var myToken = make(map[string]int)
-var userLinks = make([]string, 0)
-var adminLinks = make([]string, 0)
 
 func cookieMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -93,20 +92,22 @@ func cookieMiddleware(next http.Handler) http.Handler {
 				oldContext := r.Context()
 				newContext := context.WithValue(oldContext, "role", userRole)
 
+				if path == "/" {
+					next.ServeHTTP(w, r.WithContext(newContext))
+				}
+
 				switch userRole {
 				case UserRole:
-					for _, linkPath := range userLinks {
-						if path == linkPath {
-							next.ServeHTTP(w, r.WithContext(newContext))
-							//next.ServeHTTP(w, r)
-						}
+					hasPrefix := strings.HasPrefix(path, "/user")
+					if hasPrefix {
+						fmt.Println("User Path: ", path)
+						next.ServeHTTP(w, r)
 					}
 				case AdminRole:
-					for _, linkPath := range adminLinks {
-						if path == linkPath {
-							next.ServeHTTP(w, r.WithContext(newContext))
-							//next.ServeHTTP(w, r)
-						}
+					hasPrefix := strings.HasPrefix(path, "/admin")
+					if hasPrefix {
+						fmt.Println("Admin Path: ", path)
+						next.ServeHTTP(w, r)
 					}
 				default:
 					http.Redirect(w, r, "/authentication", 301)
@@ -162,18 +163,7 @@ func AuthenticationHandler(w http.ResponseWriter, r *http.Request) {
 
 				http.SetCookie(w, &cookie)
 
-				context_role := r.Context().Value("role")
-
-				fmt.Println("context_role: ", context_role)
-
-				switch context_role {
-				case UserRole:
-					http.Redirect(w, r, "/index_client", 301)
-				case AdminRole:
-					http.Redirect(w, r, "/", 301)
-				}
-
-				//http.Redirect(w, r, "/index_client", 301)
+				http.Redirect(w, r, "/", 301)
 			} else {
 				http.Error(w, "login or password entered incorrectly", 400)
 				return
@@ -185,38 +175,43 @@ func AuthenticationHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func IndexClientHandler(w http.ResponseWriter, r *http.Request) {
-	rows, err := database.Query("SELECT * FROM votingdb.votings")
-	if err != nil {
-		log.Println(err)
-	}
+// func IndexClientHandler(w http.ResponseWriter, r *http.Request) {
+// 	rows, err := database.Query("SELECT * FROM votingdb.votings")
+// 	if err != nil {
+// 		log.Println(err)
+// 	}
 
-	defer rows.Close()
+// 	defer rows.Close()
 
-	votings := []Voting{}
+// 	votings := []Voting{}
 
-	for rows.Next() {
-		voting := Voting{}
+// 	for rows.Next() {
+// 		voting := Voting{}
 
-		err := rows.Scan(&voting.ID, &voting.Name, &voting.Description, &voting.StartTime, &voting.EndTime)
-		if err != nil {
-			log.Println(err)
+// 		err := rows.Scan(&voting.ID, &voting.Name, &voting.Description, &voting.StartTime, &voting.EndTime)
+// 		if err != nil {
+// 			log.Println(err)
 
-			continue
-		}
+// 			continue
+// 		}
 
-		votings = append(votings, voting)
-	}
+// 		votings = append(votings, voting)
+// 	}
 
-	tmpl, err := template.ParseFiles("templates/index_client.html")
-	if err != nil {
-		log.Println(err)
-	}
+// 	tmpl, err := template.ParseFiles("templates/index_client.html")
+// 	if err != nil {
+// 		log.Println(err)
+// 	}
 
-	tmpl.Execute(w, votings)
-}
+// 	tmpl.Execute(w, votings)
+// }
 
 func IndexHandler(w http.ResponseWriter, r *http.Request) {
+	type AllVotings struct {
+		IsAvailableRole bool
+		Votings         []Voting
+	}
+
 	rows, err := database.Query("SELECT * FROM votingdb.votings")
 	if err != nil {
 		log.Println(err)
@@ -238,13 +233,33 @@ func IndexHandler(w http.ResponseWriter, r *http.Request) {
 
 		votings = append(votings, voting)
 	}
+
+	context_role := r.Context().Value("role")
+
+	role := fmt.Sprintf("%v", context_role)
+
+	fmt.Println("context_role: ", role)
+
+	isAvailableRole := false
+
+	if role == AdminRole {
+		isAvailableRole = true
+	}
+
+	allVotings := AllVotings{
+		IsAvailableRole: isAvailableRole,
+		Votings:         votings,
+	}
+
+	fmt.Println("IsAvailableRole: ", allVotings.IsAvailableRole)
 
 	tmpl, err := template.ParseFiles("templates/index.html")
 	if err != nil {
 		log.Println(err)
 	}
 
-	tmpl.Execute(w, votings)
+	tmpl.Execute(w, allVotings)
+	//tmpl.Execute(w, votings)
 }
 
 func CreateVotingHandler(w http.ResponseWriter, r *http.Request) {
@@ -265,7 +280,7 @@ func CreateVotingHandler(w http.ResponseWriter, r *http.Request) {
 			log.Println(err)
 		}
 
-		http.Redirect(w, r, "/voting_qa/{id_voting:[0-9]+}", 301)
+		http.Redirect(w, r, "/admin/voting_qa/{id_voting:[0-9]+}", 301)
 
 	} else {
 		http.ServeFile(w, r, "templates/create_voting.html")
@@ -417,7 +432,7 @@ func CreateQuestionHandler(w http.ResponseWriter, r *http.Request) {
 			fmt.Println(err)
 		}
 
-		http.Redirect(w, r, "/voting_qa/"+id_voting, 301)
+		http.Redirect(w, r, "/admin/voting_qa/"+id_voting, 301)
 
 	} else {
 		http.ServeFile(w, r, "templates/create_question.html")
@@ -444,7 +459,7 @@ func CreateAnswerHandler(w http.ResponseWriter, r *http.Request) {
 			fmt.Println(err)
 		}
 
-		http.Redirect(w, r, "/voting_qa/"+id_voting, 301)
+		http.Redirect(w, r, "/admin/voting_qa/"+id_voting, 301)
 
 	} else {
 		http.ServeFile(w, r, "templates/create_answer.html")
@@ -490,7 +505,7 @@ func EditVotingHandler(w http.ResponseWriter, r *http.Request) {
 			log.Println(err)
 		}
 
-		http.Redirect(w, r, "/voting_qa/"+id_voting, 301)
+		http.Redirect(w, r, "/admin/voting_qa/"+id_voting, 301)
 	}
 }
 
@@ -532,7 +547,7 @@ func EditQuestionHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			log.Println(err)
 		}
-		http.Redirect(w, r, "/open_qa/"+id_voting+"/"+id_question, 301)
+		http.Redirect(w, r, "/admin/open_qa/"+id_voting+"/"+id_question, 301)
 	}
 }
 
@@ -585,7 +600,7 @@ func EditAnswerHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, http.StatusText(404), http.StatusNotFound)
 		} else {
 			id_voting := strconv.Itoa(question.ID_Voting)
-			http.Redirect(w, r, "/open_qa/"+id_voting+"/"+id_question, 301)
+			http.Redirect(w, r, "/admin/open_qa/"+id_voting+"/"+id_question, 301)
 		}
 	}
 }
@@ -625,14 +640,12 @@ func DeleteQuestionHandler(w http.ResponseWriter, r *http.Request) {
 
 	id_voting := strconv.Itoa(idVoting)
 
-	http.Redirect(w, r, "/voting_qa/"+id_voting, 301)
+	http.Redirect(w, r, "/admin/voting_qa/"+id_voting, 301)
 }
 
 func DeleteAnswerHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id_answer := vars["id_answer"]
-
-	fmt.Println("id_answer: ", id_answer)
 
 	var idQuestion int
 	row_queestion := database.QueryRow("SELECT id_question FROM votingdb.answers WHERE id = ?", id_answer)
@@ -642,8 +655,6 @@ func DeleteAnswerHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(404), http.StatusNotFound)
 	}
 
-	fmt.Println("idQuestion: ", idQuestion)
-
 	var idVoting int
 	row_answer := database.QueryRow("SELECT id_voting FROM votingdb.questions WHERE id = ?", idQuestion)
 	err = row_answer.Scan(&idVoting)
@@ -651,8 +662,6 @@ func DeleteAnswerHandler(w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 		http.Error(w, http.StatusText(404), http.StatusNotFound)
 	}
-
-	fmt.Println("idVoting: ", idVoting)
 
 	_, err = database.Exec("DELETE FROM votingdb.answers WHERE id = ?", id_answer)
 	if err != nil {
@@ -662,9 +671,7 @@ func DeleteAnswerHandler(w http.ResponseWriter, r *http.Request) {
 	id_voting := strconv.Itoa(idVoting)
 	id_question := strconv.Itoa(idQuestion)
 
-	fmt.Println("id_voting/id_question: ", id_voting+"/"+id_question)
-
-	http.Redirect(w, r, "/open_qa/"+id_voting+"/"+id_question, 301)
+	http.Redirect(w, r, "/admin/open_qa/"+id_voting+"/"+id_question, 301)
 }
 
 func DeleteQuestion(id_voting string) {
@@ -735,26 +742,22 @@ func main() {
 
 	defer db.Close()
 
-	userLinks = []string{"/index_client"}
-	adminLinks = []string{"/", "/create_voting"}
-
 	router := mux.NewRouter()
 	router.HandleFunc("/authentication", AuthenticationHandler)
 	router.HandleFunc("/logout", LogOut)
 
 	router.HandleFunc("/", IndexHandler)
-	router.HandleFunc("/index_client", IndexClientHandler)
-	router.HandleFunc("/create_voting", CreateVotingHandler)
-	router.HandleFunc("/voting_qa/{id_voting:[0-9]+}", VotingQAHandler)
-	router.HandleFunc("/open_qa/{id_voting:[0-9]+}/{id_question:[0-9]+}", OpenQAHandler)
-	router.HandleFunc("/create_question/{id_voting:[0-9]+}", CreateQuestionHandler)
-	router.HandleFunc("/create_answer/{id_voting:[0-9]+}/{id_question:[0-9]+}", CreateAnswerHandler)
-	router.HandleFunc("/edit_voting/{id_voting:[0-9]+}", EditVotingHandler)
-	router.HandleFunc("/edit_question/{id_voting:[0-9]+}/{id_question:[0-9]+}", EditQuestionHandler)
-	router.HandleFunc("/edit_answer/{id_question:[0-9]+}/{id_answer:[0-9]+}", EditAnswerHandler)
-	router.HandleFunc("/delete_voting/{id_voting:[0-9]+}", DeleteVotingHandler)
-	router.HandleFunc("/delete_question/{id_question:[0-9]+}", DeleteQuestionHandler)
-	router.HandleFunc("/delete_answer/{id_answer:[0-9]+}", DeleteAnswerHandler)
+	router.HandleFunc("/admin/create_voting", CreateVotingHandler)
+	router.HandleFunc("/admin/voting_qa/{id_voting:[0-9]+}", VotingQAHandler)
+	router.HandleFunc("/admin/open_qa/{id_voting:[0-9]+}/{id_question:[0-9]+}", OpenQAHandler)
+	router.HandleFunc("/admin/create_question/{id_voting:[0-9]+}", CreateQuestionHandler)
+	router.HandleFunc("/admin/create_answer/{id_voting:[0-9]+}/{id_question:[0-9]+}", CreateAnswerHandler)
+	router.HandleFunc("/admin/edit_voting/{id_voting:[0-9]+}", EditVotingHandler)
+	router.HandleFunc("/admin/edit_question/{id_voting:[0-9]+}/{id_question:[0-9]+}", EditQuestionHandler)
+	router.HandleFunc("/admin/edit_answer/{id_question:[0-9]+}/{id_answer:[0-9]+}", EditAnswerHandler)
+	router.HandleFunc("/admin/delete_voting/{id_voting:[0-9]+}", DeleteVotingHandler)
+	router.HandleFunc("/admin/delete_question/{id_question:[0-9]+}", DeleteQuestionHandler)
+	router.HandleFunc("/admin/delete_answer/{id_answer:[0-9]+}", DeleteAnswerHandler)
 	http.Handle("/", router)
 
 	router.Use(cookieMiddleware)

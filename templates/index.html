@@ -20,18 +20,22 @@
         </style>
     </head>
     <body>
+        <div>
         <h2>The list of votes</h2>
-        <p><a href="/create_voting" class="create_link">Create a new voting</a></p>
+        {{if .IsAvailableRole}}
+        <p><a href="/admin/create_voting" class="create_link">Create a new voting</a></p>
+        {{end}}
         <table>
             <thead><th>Voting</th><th>Description</th><th>Start time</th><th>End time</th></thead>
-            {{range . }}
+            {{range .Votings}}
             <tr>
-                <td><a href="/voting_qa/{{ .ID}}" class="name">{{ .Name}}</a></td>
+                <td><a href="/admin/voting_qa/{{ .ID}}" class="name">{{ .Name}}</a></td>
                 <td>{{ .Description}}</td>
                 <td>{{ .StartTime}}</td>
                 <td>{{ .EndTime}}</td>
             </tr>
             {{end}}
         </table>
+    </div>
     </body>
 </html>

@@ -70,7 +70,7 @@
     <body>
         <h2>Voting</h2>
         <p><b>Voting name:</b></p>
-        <h3><a href="/edit_voting/{{ .Voting.ID}}" class="edit_link"><em>{{ .Voting.Name}}</em><span class="tooltiptext">Edit</span></a></h3>
+        <h3><a href="/admin/edit_voting/{{ .Voting.ID}}" class="edit_link"><em>{{ .Voting.Name}}</em><span class="tooltiptext">Edit</span></a></h3>
         <p><b>Start and end of voting time:</b></p>
         <div><b>Start: </b>{{ .Voting.StartTime}}<b><br>
             End: </b>{{ .Voting.EndTime}}</div>
@@ -78,19 +78,19 @@
         <div><em>{{ .Voting.Description}}</em></div>
         <ol>
             {{range .QAs}}
-            <li><a href="/open_qa/{{ .Question.ID_Voting}}/{{ .Question.ID}}" class="edit_link"><b>{{ .Question.Name}}</b><span class="tooltiptext">Open</span></a>
+            <li><a href="/admin/open_qa/{{ .Question.ID_Voting}}/{{ .Question.ID}}" class="edit_link"><b>{{ .Question.Name}}</b><span class="tooltiptext">Open</span></a>
                 <ul>
                     {{range .Answers}}
                         <li>{{ .Name}}</li>
                     {{end}}
                 </ul>
             </li>
-        <dev><a href="/create_answer/{{ .Question.ID_Voting}}/{{ .Question.ID}}" class="create_link">Create a new answer</a></dev>
+        <dev><a href="/admin/create_answer/{{ .Question.ID_Voting}}/{{ .Question.ID}}" class="create_link">Create a new answer</a></dev>
         <br><br>
         {{end}}
         </ol>
         <br>
-       <button><a href="/create_question/{{ .Voting.ID}}" class="create_button">Create a new question</a></button>
+       <button><a href="/admin/create_question/{{ .Voting.ID}}" class="create_button">Create a new question</a></button>
     </body>
 </html>
 
