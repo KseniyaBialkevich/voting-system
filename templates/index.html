@@ -20,9 +20,8 @@
         </style>
     </head>
     <body>
-        <div>
         <h2>The list of votes</h2>
-        {{if .IsAvailableRole}}
+        {{if .IsExistRole}}
         <p><a href="/admin/create_voting" class="create_link">Create a new voting</a></p>
         {{end}}
         <table>
@@ -36,6 +35,5 @@
             </tr>
             {{end}}
         </table>
-    </div>
     </body>
 </html>

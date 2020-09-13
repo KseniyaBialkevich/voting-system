@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Questions and answers voting</title>
+        <style>
+            body {
+                margin-left: 5%;
+            }
+            h2 {
+                color: rgb(8, 6, 104);
+                text-align: center;
+            }
+            p {
+                text-decoration: underline;
+            }
+            .edit_link {
+                position: relative;
+                color: black;
+                text-decoration: none;
+            }
+            .edit_link:hover {
+                color: darkblue
+            }
+            .edit_link .tooltiptext {
+                visibility: hidden;
+                width: 60px;
+                background-color: white;
+                color: black;
+                font-size: 15px;
+                text-align: center;
+                margin-left: 10px;
+                padding: 5px 0;
+                /* border-color: black;
+                border-width: 1px;
+                border-radius: 6px; */
+
+                position: absolute;
+                z-index: 1;
+
+                top: -5px;
+                left: 105%;
+ 
+                opacity: 0;
+                transition: opacity 1s;
+            }
+            .edit_link:hover .tooltiptext {
+                visibility: visible;
+                opacity: 1;
+            }
+            .edit_link .tooltiptext::after {
+                content: " ";
+                position: absolute;
+                top: 50%;
+                right: 100%; 
+                margin-top: -5px;
+                border-width: 5px;
+                border-style: solid;
+                border-color: transparent black transparent transparent;
+            }
+            .create_link:hover {
+                color: darkviolet;
+            }
+            .create_button {
+                color: black;
+                text-decoration: none;
+            }
+        </style>
+    </head>
+    <body>
+        <h2>Voting</h2>
+        <p><b>Voting name:</b></p>
+        <h3><a href="/admin/edit_voting/{{ .Voting.ID}}" class="edit_link"><em>{{ .Voting.Name}}</em><span class="tooltiptext">Edit</span></a></h3>
+        <p><b>Start and end of voting time:</b></p>
+        <div><b>Start: </b>{{ .Voting.StartTime}}<b><br>
+            End: </b>{{ .Voting.EndTime}}</div>
+        <p><b>Description:</b></p>
+        <div><em>{{ .Voting.Description}}</em></div>
+        <ol>
+            {{range .QAs}}
+            <li><a href="/admin/open_qa/{{ .Question.ID_Voting}}/{{ .Question.ID}}" class="edit_link"><b>{{ .Question.Name}}</b><span class="tooltiptext">Open</span></a>
+                <ul>
+                    {{range .Answers}}
+                        <li>{{ .Name}}</li>
+                    {{end}}
+                </ul>
+            </li>
+        <dev><a href="/admin/create_answer/{{ .Question.ID_Voting}}/{{ .Question.ID}}" class="create_link">Create a new answer</a></dev>
+        <br><br>
+        {{end}}
+        </ol>
+        <br>
+       <button><a href="/admin/create_question/{{ .Voting.ID}}" class="create_button">Create a new question</a></button>
+    </body>
+</html>
+

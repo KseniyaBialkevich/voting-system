@@ -15,13 +15,6 @@ import (
 	"github.com/gorilla/mux"
 )
 
-type rolesType string
-
-const (
-	UserRole  rolesType = "user"
-	AdminRole           = "admin"
-)
-
 type Voting struct {
 	ID          int    `json:"id"`
 	Name        string `json:"name"`
@@ -43,11 +36,11 @@ type Answer struct {
 }
 
 type User struct {
-	ID      int       `json:"id"`
-	Name    string    `json:"name"`
-	Surname string    `json:"surname"`
-	Adress  string    `json:"adress"`
-	Role    rolesType `json: "role"`
+	ID      int    `json:"id"`
+	Name    string `json:"name"`
+	Surname string `json:"surname"`
+	Adress  string `json:"adress"`
+	Role    string `json: "role"`
 }
 
 type Authentication struct {
@@ -77,7 +70,7 @@ func cookieMiddleware(next http.Handler) http.Handler {
 			userID, isExist := myToken[cookie.Value]
 
 			if isExist {
-				var userRole rolesType
+				var userRole string
 
 				row_role := database.QueryRow("SELECT role FROM votingdb.users WHERE id = ?", userID)
 
@@ -94,24 +87,30 @@ func cookieMiddleware(next http.Handler) http.Handler {
 
 				if path == "/" {
 					next.ServeHTTP(w, r.WithContext(newContext))
+					return
 				}
 
-				switch userRole {
-				case UserRole:
-					hasPrefix := strings.HasPrefix(path, "/user")
-					if hasPrefix {
-						fmt.Println("User Path: ", path)
-						next.ServeHTTP(w, r)
-					}
-				case AdminRole:
-					hasPrefix := strings.HasPrefix(path, "/admin")
-					if hasPrefix {
-						fmt.Println("Admin Path: ", path)
-						next.ServeHTTP(w, r)
-					}
-				default:
-					http.Redirect(w, r, "/authentication", 301)
+				if strings.HasPrefix(path, "/admin") && userRole == "admin" {
+					next.ServeHTTP(w, r)
+				} else {
+					log.Println(err)
+					http.Error(w, http.StatusText(403), http.StatusForbidden)
 				}
+
+				// switch userRole {
+				// case "user":
+				// 	fmt.Println("User Path: ", path)
+				// 	next.ServeHTTP(w, r)
+				// case "admin":
+				// 	hasPrefix := strings.HasPrefix(path, "/admin")
+				// 	if hasPrefix {
+				// 		fmt.Println("Admin Path: ", path)
+				// 		next.ServeHTTP(w, r)
+				// 	}
+				// default:
+				// 	log.Println(err)
+				// 	http.Error(w, http.StatusText(404), http.StatusNotFound)
+				//}
 				//next.ServeHTTP(w, r)
 			} else {
 				http.Redirect(w, r, "/authentication", 301)
@@ -208,8 +207,8 @@ func AuthenticationHandler(w http.ResponseWriter, r *http.Request) {
 
 func IndexHandler(w http.ResponseWriter, r *http.Request) {
 	type AllVotings struct {
-		IsAvailableRole bool
-		Votings         []Voting
+		IsExistRole bool
+		Votings     []Voting
 	}
 
 	rows, err := database.Query("SELECT * FROM votingdb.votings")
@@ -240,18 +239,22 @@ func IndexHandler(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Println("context_role: ", role)
 
-	isAvailableRole := false
+	var isExistRole bool
 
-	if role == AdminRole {
-		isAvailableRole = true
+	if role == "user" {
+		isExistRole = false
+	} else if role == "admin" {
+		isExistRole = true
 	}
 
 	allVotings := AllVotings{
-		IsAvailableRole: isAvailableRole,
-		Votings:         votings,
+		IsExistRole: isExistRole,
+		Votings:     votings,
 	}
 
-	fmt.Println("IsAvailableRole: ", allVotings.IsAvailableRole)
+	fmt.Println("IsExistRole: ", allVotings.IsExistRole)
+
+	fmt.Printf("%#v \n", allVotings)
 
 	tmpl, err := template.ParseFiles("templates/index.html")
 	if err != nil {
@@ -283,8 +286,86 @@ func CreateVotingHandler(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/admin/voting_qa/{id_voting:[0-9]+}", 301)
 
 	} else {
-		http.ServeFile(w, r, "templates/create_voting.html")
+		http.ServeFile(w, r, "templates/admin_create_voting.html")
 	}
+}
+
+func AdminVotingQAHandler(w http.ResponseWriter, r *http.Request) {
+
+	vars := mux.Vars(r)
+	id_voting := vars["id_voting"]
+
+	type QuAns struct {
+		Question Question `json:"question"`
+		Answers  []Answer `json:"answers"`
+	}
+
+	type VotingQA struct {
+		Voting Voting  `json:"voting"`
+		QAs    []QuAns `json:"qas"`
+	}
+
+	votingRow := database.QueryRow("SELECT * FROM votingdb.votings WHERE id = ?", id_voting)
+
+	voting := Voting{}
+
+	err := votingRow.Scan(&voting.ID, &voting.Name, &voting.Description, &voting.StartTime, &voting.EndTime)
+	if err != nil {
+		log.Println(err)
+		http.Error(w, http.StatusText(404), http.StatusNotFound)
+	}
+
+	resultQA := []QuAns{}
+
+	questiosRows, err := database.Query("SELECT * FROM votingdb.questions WHERE id_voting = ?", id_voting)
+	if err != nil {
+		log.Println(err)
+	}
+
+	defer questiosRows.Close()
+
+	for questiosRows.Next() {
+		question := Question{}
+		err := questiosRows.Scan(&question.ID, &question.Name, &question.ID_Voting)
+		if err != nil {
+			log.Println(err)
+			continue
+		}
+
+		answers := []Answer{}
+
+		answersRows, err := database.Query("SELECT * FROM votingdb.answers WHERE id_question = ?", question.ID)
+		if err != nil {
+			log.Println(err)
+		}
+
+		defer answersRows.Close()
+
+		for answersRows.Next() {
+			answer := Answer{}
+			err := answersRows.Scan(&answer.ID, &answer.Name, &answer.ID_Question)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+			answers = append(answers, answer)
+		}
+
+		qu_ans := QuAns{
+			Question: question,
+			Answers:  answers,
+		}
+
+		resultQA = append(resultQA, qu_ans)
+	}
+
+	votingQA := VotingQA{
+		Voting: voting,
+		QAs:    resultQA,
+	}
+
+	tmpl, _ := template.ParseFiles("templates/admin_voting_qa.html")
+	tmpl.Execute(w, votingQA)
 }
 
 func VotingQAHandler(w http.ResponseWriter, r *http.Request) {
@@ -410,7 +491,7 @@ func OpenQAHandler(w http.ResponseWriter, r *http.Request) {
 		Answers:  answers,
 	}
 
-	tmpl, _ := template.ParseFiles("templates/open_qa.html")
+	tmpl, _ := template.ParseFiles("templates/admin_open_qa.html")
 	tmpl.Execute(w, qas)
 }
 
@@ -435,7 +516,7 @@ func CreateQuestionHandler(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/admin/voting_qa/"+id_voting, 301)
 
 	} else {
-		http.ServeFile(w, r, "templates/create_question.html")
+		http.ServeFile(w, r, "templates/admin_create_question.html")
 	}
 }
 
@@ -462,7 +543,7 @@ func CreateAnswerHandler(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/admin/voting_qa/"+id_voting, 301)
 
 	} else {
-		http.ServeFile(w, r, "templates/create_answer.html")
+		http.ServeFile(w, r, "templates/admin_create_answer.html")
 	}
 }
 
@@ -482,7 +563,7 @@ func EditVotingHandler(w http.ResponseWriter, r *http.Request) {
 			log.Println(err)
 			http.Error(w, http.StatusText(404), http.StatusNotFound)
 		} else {
-			tmpl, _ := template.ParseFiles("templates/edit_voting.html")
+			tmpl, _ := template.ParseFiles("templates/admin_edit_voting.html")
 			tmpl.Execute(w, voting)
 		}
 	}
@@ -525,7 +606,7 @@ func EditQuestionHandler(w http.ResponseWriter, r *http.Request) {
 			log.Println(err)
 			http.Error(w, http.StatusText(404), http.StatusNotFound)
 		} else {
-			tmpl, _ := template.ParseFiles("templates/edit_question.html")
+			tmpl, _ := template.ParseFiles("templates/admin_edit_question.html")
 			tmpl.Execute(w, question)
 		}
 	}
@@ -567,7 +648,7 @@ func EditAnswerHandler(w http.ResponseWriter, r *http.Request) {
 			log.Println(err)
 			http.Error(w, http.StatusText(404), http.StatusNotFound)
 		} else {
-			tmpl, _ := template.ParseFiles("templates/edit_answer.html")
+			tmpl, _ := template.ParseFiles("templates/admin_edit_answer.html")
 			tmpl.Execute(w, answer)
 		}
 	}
@@ -748,7 +829,8 @@ func main() {
 
 	router.HandleFunc("/", IndexHandler)
 	router.HandleFunc("/admin/create_voting", CreateVotingHandler)
-	router.HandleFunc("/admin/voting_qa/{id_voting:[0-9]+}", VotingQAHandler)
+	router.HandleFunc("/admin/voting_qa/{id_voting:[0-9]+}", AdminVotingQAHandler)
+	router.HandleFunc("/voting_qa/{id_voting:[0-9]+}", VotingQAHandler)
 	router.HandleFunc("/admin/open_qa/{id_voting:[0-9]+}/{id_question:[0-9]+}", OpenQAHandler)
 	router.HandleFunc("/admin/create_question/{id_voting:[0-9]+}", CreateQuestionHandler)
 	router.HandleFunc("/admin/create_answer/{id_voting:[0-9]+}/{id_question:[0-9]+}", CreateAnswerHandler)
