@@ -28,7 +28,7 @@
             <thead><th>Voting</th><th>Description</th><th>Start time</th><th>End time</th></thead>
             {{range .Votings}}
             <tr>
-                <td><a href="/admin/voting_qa/{{ .ID}}" class="name">{{ .Name}}</a></td>
+                <td><a href="/voting_qa/{{ .ID}}" class="name">{{ .Name}}</a></td>
                 <td>{{ .Description}}</td>
                 <td>{{ .StartTime}}</td>
                 <td>{{ .EndTime}}</td>

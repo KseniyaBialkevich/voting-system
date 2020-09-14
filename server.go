@@ -80,38 +80,19 @@ func cookieMiddleware(next http.Handler) http.Handler {
 					http.Error(w, http.StatusText(404), http.StatusNotFound)
 				}
 
-				fmt.Println("userRole: ", userRole)
-
 				oldContext := r.Context()
 				newContext := context.WithValue(oldContext, "role", userRole)
 
-				if path == "/" {
-					next.ServeHTTP(w, r.WithContext(newContext))
-					return
-				}
-
 				if strings.HasPrefix(path, "/admin") && userRole == "admin" {
 					next.ServeHTTP(w, r)
+				} else if !strings.HasPrefix(path, "/admin") {
+					next.ServeHTTP(w, r.WithContext(newContext))
+					return
 				} else {
 					log.Println(err)
 					http.Error(w, http.StatusText(403), http.StatusForbidden)
 				}
 
-				// switch userRole {
-				// case "user":
-				// 	fmt.Println("User Path: ", path)
-				// 	next.ServeHTTP(w, r)
-				// case "admin":
-				// 	hasPrefix := strings.HasPrefix(path, "/admin")
-				// 	if hasPrefix {
-				// 		fmt.Println("Admin Path: ", path)
-				// 		next.ServeHTTP(w, r)
-				// 	}
-				// default:
-				// 	log.Println(err)
-				// 	http.Error(w, http.StatusText(404), http.StatusNotFound)
-				//}
-				//next.ServeHTTP(w, r)
 			} else {
 				http.Redirect(w, r, "/authentication", 301)
 			}
@@ -174,37 +155,6 @@ func AuthenticationHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// func IndexClientHandler(w http.ResponseWriter, r *http.Request) {
-// 	rows, err := database.Query("SELECT * FROM votingdb.votings")
-// 	if err != nil {
-// 		log.Println(err)
-// 	}
-
-// 	defer rows.Close()
-
-// 	votings := []Voting{}
-
-// 	for rows.Next() {
-// 		voting := Voting{}
-
-// 		err := rows.Scan(&voting.ID, &voting.Name, &voting.Description, &voting.StartTime, &voting.EndTime)
-// 		if err != nil {
-// 			log.Println(err)
-
-// 			continue
-// 		}
-
-// 		votings = append(votings, voting)
-// 	}
-
-// 	tmpl, err := template.ParseFiles("templates/index_client.html")
-// 	if err != nil {
-// 		log.Println(err)
-// 	}
-
-// 	tmpl.Execute(w, votings)
-// }
-
 func IndexHandler(w http.ResponseWriter, r *http.Request) {
 	type AllVotings struct {
 		IsExistRole bool
@@ -237,8 +187,6 @@ func IndexHandler(w http.ResponseWriter, r *http.Request) {
 
 	role := fmt.Sprintf("%v", context_role)
 
-	fmt.Println("context_role: ", role)
-
 	var isExistRole bool
 
 	if role == "user" {
@@ -251,10 +199,6 @@ func IndexHandler(w http.ResponseWriter, r *http.Request) {
 		IsExistRole: isExistRole,
 		Votings:     votings,
 	}
-
-	fmt.Println("IsExistRole: ", allVotings.IsExistRole)
-
-	fmt.Printf("%#v \n", allVotings)
 
 	tmpl, err := template.ParseFiles("templates/index.html")
 	if err != nil {
@@ -379,8 +323,9 @@ func VotingQAHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type VotingQA struct {
-		Voting Voting  `json:"voting"`
-		QAs    []QuAns `json:"qas"`
+		IsExistRole bool
+		Voting      Voting  `json:"voting"`
+		QAs         []QuAns `json:"qas"`
 	}
 
 	votingRow := database.QueryRow("SELECT * FROM votingdb.votings WHERE id = ?", id_voting)
@@ -437,9 +382,22 @@ func VotingQAHandler(w http.ResponseWriter, r *http.Request) {
 		resultQA = append(resultQA, qu_ans)
 	}
 
+	context_role := r.Context().Value("role")
+
+	role := fmt.Sprintf("%v", context_role)
+
+	var isExistRole bool
+
+	if role == "user" {
+		isExistRole = false
+	} else if role == "admin" {
+		isExistRole = true
+	}
+
 	votingQA := VotingQA{
-		Voting: voting,
-		QAs:    resultQA,
+		IsExistRole: isExistRole,
+		Voting:      voting,
+		QAs:         resultQA,
 	}
 
 	tmpl, _ := template.ParseFiles("templates/voting_qa.html")

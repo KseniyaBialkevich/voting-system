@@ -14,10 +14,16 @@
             p {
                 text-decoration: underline;
             }
+            .edit_link:hover {
+                color: darkviolet;
+            }
         </style>
     </head>
     <body>
         <h2>Voting</h2>
+         {{if .IsExistRole}}
+        <p><a href="/admin/voting_qa/{{ .Voting.ID}}" class="edit_link">Edit the vote</a></p>
+        {{end}}
         <p><b>Voting name:</b></p>
         <h3><em>{{ .Voting.Name}}</em></h3>
         <p><b>Start and end of voting time:</b></p>
@@ -38,4 +44,6 @@
         </ol>
     </body>
 </html>
+
+
 
