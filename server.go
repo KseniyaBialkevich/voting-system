@@ -40,7 +40,7 @@ type User struct {
 	Name    string `json:"name"`
 	Surname string `json:"surname"`
 	Adress  string `json:"adress"`
-	Role    string `json: "role"`
+	Role    string `json:"role"`
 }
 
 type Authentication struct {
@@ -138,8 +138,6 @@ func AuthenticationHandler(w http.ResponseWriter, r *http.Request) {
 					// Secure:   true,
 					// HttpOnly: true,
 				}
-
-				http.SetCookie(w, &cookie)
 
 				http.SetCookie(w, &cookie)
 
@@ -314,94 +312,97 @@ func AdminVotingQAHandler(w http.ResponseWriter, r *http.Request) {
 
 func VotingQAHandler(w http.ResponseWriter, r *http.Request) {
 
-	vars := mux.Vars(r)
-	id_voting := vars["id_voting"]
+	if r.Method == "GET" {
 
-	type QuAns struct {
-		Question Question `json:"question"`
-		Answers  []Answer `json:"answers"`
-	}
+		vars := mux.Vars(r)
+		id_voting := vars["id_voting"]
 
-	type VotingQA struct {
-		IsExistRole bool
-		Voting      Voting  `json:"voting"`
-		QAs         []QuAns `json:"qas"`
-	}
-
-	votingRow := database.QueryRow("SELECT * FROM votingdb.votings WHERE id = ?", id_voting)
-
-	voting := Voting{}
-
-	err := votingRow.Scan(&voting.ID, &voting.Name, &voting.Description, &voting.StartTime, &voting.EndTime)
-	if err != nil {
-		log.Println(err)
-		http.Error(w, http.StatusText(404), http.StatusNotFound)
-	}
-
-	resultQA := []QuAns{}
-
-	questiosRows, err := database.Query("SELECT * FROM votingdb.questions WHERE id_voting = ?", id_voting)
-	if err != nil {
-		log.Println(err)
-	}
-
-	defer questiosRows.Close()
-
-	for questiosRows.Next() {
-		question := Question{}
-		err := questiosRows.Scan(&question.ID, &question.Name, &question.ID_Voting)
-		if err != nil {
-			log.Println(err)
-			continue
+		type QuAns struct {
+			Question Question `json:"question"`
+			Answers  []Answer `json:"answers"`
 		}
 
-		answers := []Answer{}
+		type VotingQA struct {
+			IsExistRole bool
+			Voting      Voting  `json:"voting"`
+			QAs         []QuAns `json:"qas"`
+		}
 
-		answersRows, err := database.Query("SELECT * FROM votingdb.answers WHERE id_question = ?", question.ID)
+		votingRow := database.QueryRow("SELECT * FROM votingdb.votings WHERE id = ?", id_voting)
+
+		voting := Voting{}
+
+		err := votingRow.Scan(&voting.ID, &voting.Name, &voting.Description, &voting.StartTime, &voting.EndTime)
+		if err != nil {
+			log.Println(err)
+			http.Error(w, http.StatusText(404), http.StatusNotFound)
+		}
+
+		resultQA := []QuAns{}
+
+		questiosRows, err := database.Query("SELECT * FROM votingdb.questions WHERE id_voting = ?", id_voting)
 		if err != nil {
 			log.Println(err)
 		}
 
-		defer answersRows.Close()
+		defer questiosRows.Close()
 
-		for answersRows.Next() {
-			answer := Answer{}
-			err := answersRows.Scan(&answer.ID, &answer.Name, &answer.ID_Question)
+		for questiosRows.Next() {
+			question := Question{}
+			err := questiosRows.Scan(&question.ID, &question.Name, &question.ID_Voting)
 			if err != nil {
-				fmt.Println(err)
+				log.Println(err)
 				continue
 			}
-			answers = append(answers, answer)
+
+			answers := []Answer{}
+
+			answersRows, err := database.Query("SELECT * FROM votingdb.answers WHERE id_question = ?", question.ID)
+			if err != nil {
+				log.Println(err)
+			}
+
+			defer answersRows.Close()
+
+			for answersRows.Next() {
+				answer := Answer{}
+				err := answersRows.Scan(&answer.ID, &answer.Name, &answer.ID_Question)
+				if err != nil {
+					fmt.Println(err)
+					continue
+				}
+				answers = append(answers, answer)
+			}
+
+			qu_ans := QuAns{
+				Question: question,
+				Answers:  answers,
+			}
+
+			resultQA = append(resultQA, qu_ans)
 		}
 
-		qu_ans := QuAns{
-			Question: question,
-			Answers:  answers,
+		context_role := r.Context().Value("role")
+
+		role := fmt.Sprintf("%v", context_role)
+
+		var isExistRole bool
+
+		if role == "user" {
+			isExistRole = false
+		} else if role == "admin" {
+			isExistRole = true
 		}
 
-		resultQA = append(resultQA, qu_ans)
+		votingQA := VotingQA{
+			IsExistRole: isExistRole,
+			Voting:      voting,
+			QAs:         resultQA,
+		}
+
+		tmpl, _ := template.ParseFiles("templates/voting_qa.html")
+		tmpl.Execute(w, votingQA)
 	}
-
-	context_role := r.Context().Value("role")
-
-	role := fmt.Sprintf("%v", context_role)
-
-	var isExistRole bool
-
-	if role == "user" {
-		isExistRole = false
-	} else if role == "admin" {
-		isExistRole = true
-	}
-
-	votingQA := VotingQA{
-		IsExistRole: isExistRole,
-		Voting:      voting,
-		QAs:         resultQA,
-	}
-
-	tmpl, _ := template.ParseFiles("templates/voting_qa.html")
-	tmpl.Execute(w, votingQA)
 }
 
 func OpenQAHandler(w http.ResponseWriter, r *http.Request) {

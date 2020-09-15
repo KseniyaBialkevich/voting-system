@@ -6,42 +6,60 @@
         <style>
             body {
                 margin-left: 5%;
+                margin-top: 2%;
             }
             h2 {
                 color: rgb(8, 6, 104);
                 text-align: center;
             }
-            p {
-                text-decoration: underline;
-            }
+           ul {
+                list-style-type: none; 
+                margin-left: 0; 
+                padding-left: 0;
+            } 
             .edit_link:hover {
                 color: darkviolet;
+            }
+            .colorString {
+                color: rgb(0, 100, 182);
+                text-decoration: underline;
+            }
+            .button {
+                margin-top: 2%;
+                margin-left: 2%;
             }
         </style>
     </head>
     <body>
-        <h2>Voting</h2>
          {{if .IsExistRole}}
         <p><a href="/admin/voting_qa/{{ .Voting.ID}}" class="edit_link">Edit the vote</a></p>
         {{end}}
         <p><b>Voting name:</b></p>
-        <h3><em>{{ .Voting.Name}}</em></h3>
+        <h3><span class="colorString">{{ .Voting.Name}}</span></h3>
         <p><b>Start and end of voting time:</b></p>
-        <div><b>Start: </b>{{ .Voting.StartTime}}<b><br>
-            End: </b>{{ .Voting.EndTime}}</div>
+        <div>
+            <b>Start: </b><span class="colorString">{{ .Voting.StartTime}}</span>
+            <br>
+            <b>End: </b><span class="colorString">{{ .Voting.EndTime}}</span>
+        </div>
         <p><b>Description:</b></p>
-        <div><em>{{ .Voting.Description}}</em></div>
+        <div><em class="colorString">{{ .Voting.Description}}</em></div>
+        <form method="POST">
         <ol>
             {{range .QAs}}
             <li><b>{{ .Question.Name}}</b>
                 <ul>
                     {{range .Answers}}
-                        <li>{{ .Name}}</li>
+                    <li><input type="radio" id="option{{ .ID}}" name ="AQ{{ .ID_Question}}" value="{{ .Name}}" />
+                        <label for="option{{ .ID}}">{{ .Name}}</label></li>
                     {{end}}
                 </ul>
+                <br>
             </li>
         {{end}}
         </ol>
+        <input type="submit" class="button" value="Send" />
+    </form>
     </body>
 </html>
 
