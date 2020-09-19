@@ -50,7 +50,7 @@
             <li><b>{{ .Question.Name}}</b>
                 <ul>
                     {{range .Answers}}
-                    <li><input type="radio" id="option{{ .ID}}" name ="AQ{{ .ID_Question}}" value="{{ .Name}}" />
+                    <li><input type="radio" id="option{{ .ID}}" name ="{{ .ID_Question}}" value="{{ .ID}}" />
                         <label for="option{{ .ID}}">{{ .Name}}</label></li>
                     {{end}}
                 </ul>

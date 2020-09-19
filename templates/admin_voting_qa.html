@@ -66,13 +66,6 @@
                 color: black;
                 text-decoration: none;
             }
-            .red_button {
-                margin-left: 10%;
-            }
-            .delete_button {
-                color: rgb(243, 11, 11);
-                text-decoration: none;
-            }
         </style>
     </head>
     <body>
@@ -102,7 +95,6 @@
         </ol>
         <br>
        <button><a href="/admin/create_question/{{ .Voting.ID}}" class="create_button">Create a new question</a></button>
-       <button class="red_button"><a href="/admin/delete_voting/{{ .Voting.ID}}" class="delete_button">Delete the voting</a></button>
     </body>
 </html>
 
