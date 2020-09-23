@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Progress of the voting</title>
+        <link rel="stylesheet" type="text/css" href="styles/progress.css">
+    </head>
+    <body>
+        <div id="container">
+                <h2>The results of vote: {{ .Voting.Name}}</h2>
+                <ol>
+                    {{range .QAs}}
+                    <li><b>{{ .Question.Name}}</b>
+                        <ul>
+                            {{range .Answers}}
+                            <li id="myBar">{{ .Name}}</li>
+                            {{end}}
+                        </ul>
+                        <br>
+                    </li>
+                {{end}}
+                </ol>
+	    </div>
+    </body>
+</html>

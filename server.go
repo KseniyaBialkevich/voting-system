@@ -457,6 +457,39 @@ func VotingQAHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func ResultHandler(w http.ResponseWriter, r *http.Request) { //TODO
+	// vars := mux.Vars(r)
+	// id_voting := vars["id_voting"]
+
+	// type Result struct {
+	// 	VotingName string
+	// 	//Progress
+	// }
+
+	// var voting_name string
+
+	// row := database.QueryRow("SELECT name FROM votingdb.votigs WHERE id = ?", id_voting)
+
+	// err := row.Scan(&voting_name)
+	// if err != nil {
+	// 	log.Println(err)
+	// 	http.Error(http.StatusText(404), http.StatusNotFound)
+	// }
+
+	// rows, err := database.QueryRow(
+	// // "USE voingdb;
+	// // SELECT vr.id_question, vr.COUNT(id_answer), vr.COUNT(id_user)
+	// // FROM voting_results AS vr
+	// // JOIN votings AS v
+	// // ON vr.id_voting = v.id
+	// // GROUP BY
+	// // WHERE id_voting = ?", id_voting
+	// )
+
+	//TODO
+
+}
+
 func OpenQAHandler(w http.ResponseWriter, r *http.Request) {
 
 	vars := mux.Vars(r)
@@ -845,10 +878,10 @@ func main() {
 	router.HandleFunc("/logout", LogOut)
 
 	router.HandleFunc("/", IndexHandler)
-	router.HandleFunc("/admin/create_voting", CreateVotingHandler)
 	router.HandleFunc("/voting_qa/{id_voting:[0-9]+}", VotingQAHandler)
+	router.HandleFunc("result/{id_voting:[0-9]+}", ResultHandler)
 	router.HandleFunc("/admin/voting_qa/{id_voting:[0-9]+}", VotingQAAdminHandler)
-	router.HandleFunc("/voting_qa_/va", VotingQAHandler)
+	router.HandleFunc("/admin/create_voting", CreateVotingHandler)
 	router.HandleFunc("/admin/open_qa/{id_voting:[0-9]+}/{id_question:[0-9]+}", OpenQAHandler)
 	router.HandleFunc("/admin/create_question/{id_voting:[0-9]+}", CreateQuestionHandler)
 	router.HandleFunc("/admin/create_answer/{id_voting:[0-9]+}/{id_question:[0-9]+}", CreateAnswerHandler)

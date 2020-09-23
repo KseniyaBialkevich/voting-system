@@ -7,14 +7,38 @@
             body {
                 margin-left: 5%;
             }
+            table, th, td {
+                border: 2px #2b2b2b solid;
+                color: #2b2b2b;
+            }
+
+            table { 
+                width: 80%;
+                background-color: #fcfcfc; 
+            }
+            th { 
+                height: 40px;
+                padding: 15px;
+                text-align: left;
+                background-color: #28f5f5; 
+            }
+            td {
+                height: 40px;
+                padding: 15px;
+                text-align: left;
+            }
+            tr:hover {
+                background-color: #b5e7f7;
+                }
             .create_link:hover {
                 color: darkviolet;
             }
             .name {
-                color: black;
+                color: rgb(0, 0, 0);
                 text-decoration: none;
             }
             .name:hover {
+                color: rgb(0, 99, 212);
                 text-decoration: underline;
             }
         </style>
@@ -28,10 +52,10 @@
             <thead><th>Voting</th><th>Description</th><th>Start time</th><th>End time</th></thead>
             {{range .Votings}}
             <tr>
-                <td><a href="/voting_qa/{{ .ID}}" class="name">{{ .Name}}</a></td>
-                <td>{{ .Description}}</td>
-                <td>{{ .StartTime}}</td>
-                <td>{{ .EndTime}}</td>
+                <td><a href="/voting_qa/{{ .ID}}" class="name">{{ .Name}}<br></a></td>
+                <td>{{ .Description}}<br></td>
+                <td>{{ .StartTime}}<br></td>
+                <td>{{ .EndTime}}<br></td>
             </tr>
             {{end}}
         </table>
