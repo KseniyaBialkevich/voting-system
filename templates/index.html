@@ -46,13 +46,13 @@
     <body>
         <h2>The list of votes</h2>
         {{if .IsExistRole}}
-        <p><a href="/admin/create_voting" class="create_link">Create a new voting</a></p>
+        <p><a href="/admin/votings" class="create_link">Create a new voting</a></p>
         {{end}}
         <table>
             <thead><th>Voting</th><th>Description</th><th>Start time</th><th>End time</th></thead>
             {{range .Votings}}
             <tr>
-                <td><a href="/voting_qa/{{ .ID}}" class="name">{{ .Name}}<br></a></td>
+                <td><a href="/votings/{{ .ID}}/questions/answers" class="name">{{ .Name}}<br></a></td>
                 <td>{{ .Description}}<br></td>
                 <td>{{ .StartTime}}<br></td>
                 <td>{{ .EndTime}}<br></td>

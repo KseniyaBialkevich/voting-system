@@ -220,28 +220,26 @@ func IndexHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func CreateVotingHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method == "POST" {
-
-		err := r.ParseForm()
-		if err != nil {
-			fmt.Println(err)
-		}
-
-		name := r.FormValue("name")
-		description := r.FormValue("description")
-		startTime := r.FormValue("start_time")
-		endTime := r.FormValue("end_time")
-
-		_, err = database.Exec("INSERT INTO votingdb.votings (name, description, start_time, end_time) VALUES(?, ?, ?, ?)", name, description, startTime, endTime)
-		if err != nil {
-			log.Println(err)
-		}
-
-		http.Redirect(w, r, "/admin/voting_qa/{id_voting:[0-9]+}", 302)
-
-	} else {
-		http.ServeFile(w, r, "templates/admin_create_voting.html")
+	err := r.ParseForm()
+	if err != nil {
+		fmt.Println(err)
 	}
+
+	name := r.FormValue("name")
+	description := r.FormValue("description")
+	startTime := r.FormValue("start_time")
+	endTime := r.FormValue("end_time")
+
+	_, err = database.Exec("INSERT INTO votingdb.votings (name, description, start_time, end_time) VALUES(?, ?, ?, ?)", name, description, startTime, endTime)
+	if err != nil {
+		log.Println(err)
+	}
+
+	http.Redirect(w, r, "/admin/votings/{id_voting:[0-9]+}/questions/answers", 302)
+}
+
+func CreateVotingTemplate(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "templates/admin_create_voting.html")
 }
 
 func VotingQAAdminHandler(w http.ResponseWriter, r *http.Request) {
@@ -323,138 +321,133 @@ func VotingQAAdminHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func VotingQAHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id_votingStr := vars["id_voting"]
+	id_voting, _ := strconv.Atoi(id_votingStr)
 
-	if r.Method == "GET" {
+	context_user := r.Context().Value("user")
+	user := ConvertInterface(context_user)
 
-		vars := mux.Vars(r)
-		id_voting := vars["id_voting"]
+	err := r.ParseForm()
+	if err != nil {
+		log.Println(err)
+	}
 
-		type QuAns struct {
-			Question Question `json:"question"`
-			Answers  []Answer `json:"answers"`
+	result := make([][]int, 0)
+
+	for key, values := range r.Form {
+		for _, value := range values {
+			id_question, _ := strconv.Atoi(key)
+			id_answer, _ := strconv.Atoi(value)
+			result = append(result, []int{id_voting, id_question, id_answer, user.ID})
 		}
+	}
 
-		type VotingQA struct {
-			IsExistRole bool
-			Voting      Voting  `json:"voting"`
-			QAs         []QuAns `json:"qas"`
-		}
-
-		votingRow := database.QueryRow("SELECT * FROM votingdb.votings WHERE id = ?", id_voting)
-
-		voting := Voting{}
-
-		err := votingRow.Scan(&voting.ID, &voting.Name, &voting.Description, &voting.StartTime, &voting.EndTime)
+	for _, value := range result {
+		id_voting := value[0]
+		id_question := value[1]
+		id_answer := value[2]
+		id_user := value[3]
+		_, err := database.Exec(
+			"INSERT INTO votingdb.voting_results (id_voting, id_question, id_answer, id_user) VALUES(?, ?, ?, ?)",
+			id_voting, id_question, id_answer, id_user)
 		if err != nil {
 			log.Println(err)
-			http.Error(w, http.StatusText(404), http.StatusNotFound)
+		}
+	}
+
+	http.Redirect(w, r, "/", 302)
+}
+
+func VotingQATemplate(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id_voting := vars["id_voting"]
+
+	type QuAns struct {
+		Question Question `json:"question"`
+		Answers  []Answer `json:"answers"`
+	}
+
+	type VotingQA struct {
+		IsExistRole bool
+		Voting      Voting  `json:"voting"`
+		QAs         []QuAns `json:"qas"`
+	}
+
+	votingRow := database.QueryRow("SELECT * FROM votingdb.votings WHERE id = ?", id_voting)
+
+	voting := Voting{}
+
+	err := votingRow.Scan(&voting.ID, &voting.Name, &voting.Description, &voting.StartTime, &voting.EndTime)
+	if err != nil {
+		log.Println(err)
+		http.Error(w, http.StatusText(404), http.StatusNotFound)
+	}
+
+	resultQA := []QuAns{}
+
+	questiosRows, err := database.Query("SELECT * FROM votingdb.questions WHERE id_voting = ?", id_voting)
+	if err != nil {
+		log.Println(err)
+	}
+
+	defer questiosRows.Close()
+
+	for questiosRows.Next() {
+		question := Question{}
+		err := questiosRows.Scan(&question.ID, &question.Name, &question.ID_Voting)
+		if err != nil {
+			log.Println(err)
+			continue
 		}
 
-		resultQA := []QuAns{}
+		answers := []Answer{}
 
-		questiosRows, err := database.Query("SELECT * FROM votingdb.questions WHERE id_voting = ?", id_voting)
+		answersRows, err := database.Query("SELECT * FROM votingdb.answers WHERE id_question = ?", question.ID)
 		if err != nil {
 			log.Println(err)
 		}
 
-		defer questiosRows.Close()
+		defer answersRows.Close()
 
-		for questiosRows.Next() {
-			question := Question{}
-			err := questiosRows.Scan(&question.ID, &question.Name, &question.ID_Voting)
+		for answersRows.Next() {
+			answer := Answer{}
+			err := answersRows.Scan(&answer.ID, &answer.Name, &answer.ID_Question)
 			if err != nil {
-				log.Println(err)
+				fmt.Println(err)
 				continue
 			}
-
-			answers := []Answer{}
-
-			answersRows, err := database.Query("SELECT * FROM votingdb.answers WHERE id_question = ?", question.ID)
-			if err != nil {
-				log.Println(err)
-			}
-
-			defer answersRows.Close()
-
-			for answersRows.Next() {
-				answer := Answer{}
-				err := answersRows.Scan(&answer.ID, &answer.Name, &answer.ID_Question)
-				if err != nil {
-					fmt.Println(err)
-					continue
-				}
-				answers = append(answers, answer)
-			}
-
-			qu_ans := QuAns{
-				Question: question,
-				Answers:  answers,
-			}
-
-			resultQA = append(resultQA, qu_ans)
+			answers = append(answers, answer)
 		}
 
-		context_user := r.Context().Value("user")
-
-		user := ConvertInterface(context_user)
-
-		var isExistRole bool
-
-		if user.Role == "user" {
-			isExistRole = false
-		} else if user.Role == "admin" {
-			isExistRole = true
+		qu_ans := QuAns{
+			Question: question,
+			Answers:  answers,
 		}
 
-		votingQA := VotingQA{
-			IsExistRole: isExistRole,
-			Voting:      voting,
-			QAs:         resultQA,
-		}
-
-		tmpl, _ := template.ParseFiles("templates/voting_qa.html")
-		tmpl.Execute(w, votingQA)
+		resultQA = append(resultQA, qu_ans)
 	}
 
-	if r.Method == "POST" {
+	context_user := r.Context().Value("user")
 
-		vars := mux.Vars(r)
-		id_votingStr := vars["id_voting"]
-		id_voting, _ := strconv.Atoi(id_votingStr)
+	user := ConvertInterface(context_user)
 
-		context_user := r.Context().Value("user")
-		user := ConvertInterface(context_user)
+	var isExistRole bool
 
-		err := r.ParseForm()
-		if err != nil {
-			log.Println(err)
-		}
-
-		result := make([][]int, 0)
-
-		for key, values := range r.Form {
-			for _, value := range values {
-				id_question, _ := strconv.Atoi(key)
-				id_answer, _ := strconv.Atoi(value)
-				result = append(result, []int{id_voting, id_question, id_answer, user.ID})
-			}
-		}
-
-		for _, value := range result {
-			id_voting := value[0]
-			id_question := value[1]
-			id_answer := value[2]
-			id_user := value[3]
-			_, err := database.Exec(
-				"INSERT INTO votingdb.voting_results (id_voting, id_question, id_answer, id_user) VALUES(?, ?, ?, ?)",
-				id_voting, id_question, id_answer, id_user)
-			if err != nil {
-				log.Println(err)
-			}
-		}
-
-		http.Redirect(w, r, "/", 302)
+	if user.Role == "user" {
+		isExistRole = false
+	} else if user.Role == "admin" {
+		isExistRole = true
 	}
+
+	votingQA := VotingQA{
+		IsExistRole: isExistRole,
+		Voting:      voting,
+		QAs:         resultQA,
+	}
+
+	tmpl, _ := template.ParseFiles("templates/voting_qa.html")
+	tmpl.Execute(w, votingQA)
 }
 
 func ResultHandler(w http.ResponseWriter, r *http.Request) { //TODO
@@ -540,193 +533,175 @@ func OpenQAHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func CreateQuestionHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method == "POST" {
+	vars := mux.Vars(r)
+	id_voting := vars["id_voting"]
 
-		vars := mux.Vars(r)
-		id_voting := vars["id_voting"]
-
-		err := r.ParseForm()
-		if err != nil {
-			fmt.Println(err)
-		}
-
-		name := r.FormValue("name")
-
-		_, err = database.Exec("INSERT INTO votingdb.questions (name, id_voting) VALUES (?, ?)", name, id_voting)
-		if err != nil {
-			fmt.Println(err)
-		}
-
-		http.Redirect(w, r, "/admin/voting_qa/"+id_voting, 302)
-
-	} else {
-		http.ServeFile(w, r, "templates/admin_create_question.html")
+	err := r.ParseForm()
+	if err != nil {
+		fmt.Println(err)
 	}
+
+	name := r.FormValue("name")
+
+	_, err = database.Exec("INSERT INTO votingdb.questions (name, id_voting) VALUES (?, ?)", name, id_voting)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	http.Redirect(w, r, "/admin/votings/"+id_voting+"/questions/answers", 302)
+
+}
+
+func CreateQuestionTemplate(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "templates/admin_create_question.html")
 }
 
 func CreateAnswerHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id_voting := vars["id_voting"]
+	id_question := vars["id_question"]
 
-	if r.Method == "POST" {
-
-		vars := mux.Vars(r)
-		id_voting := vars["id_voting"]
-		id_question := vars["id_question"]
-
-		err := r.ParseForm()
-		if err != nil {
-			fmt.Println(err)
-		}
-
-		name := r.FormValue("name")
-
-		_, err = database.Exec("INSERT INTO votingdb.answers (name, id_question) VALUES (?, ?)", name, id_question)
-		if err != nil {
-			fmt.Println(err)
-		}
-
-		http.Redirect(w, r, "/admin/voting_qa/"+id_voting, 302)
-
-	} else {
-		http.ServeFile(w, r, "templates/admin_create_answer.html")
+	err := r.ParseForm()
+	if err != nil {
+		fmt.Println(err)
 	}
+
+	name := r.FormValue("name")
+
+	_, err = database.Exec("INSERT INTO votingdb.answers (name, id_question) VALUES (?, ?)", name, id_question)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	http.Redirect(w, r, "/admin/votings/"+id_voting+"/questions/answers", 302)
+
+}
+
+func CreateAnswerTemplate(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "templates/admin_create_answer.html")
 }
 
 func EditVotingHandler(w http.ResponseWriter, r *http.Request) {
-
-	if r.Method == "GET" {
-
-		vars := mux.Vars(r)
-		id_voting := vars["id_voting"]
-
-		row := database.QueryRow("SELECT * FROM votingdb.votings WHERE id = ?", id_voting)
-
-		voting := Voting{}
-
-		err := row.Scan(&voting.ID, &voting.Name, &voting.Description, &voting.StartTime, &voting.EndTime)
-		if err != nil {
-			log.Println(err)
-			http.Error(w, http.StatusText(404), http.StatusNotFound)
-		} else {
-			tmpl, _ := template.ParseFiles("templates/admin_edit_voting.html")
-			tmpl.Execute(w, voting)
-		}
+	err := r.ParseForm()
+	if err != nil {
+		log.Println(err)
 	}
 
-	if r.Method == "POST" {
+	id_voting := r.FormValue("id_voting")
+	name := r.FormValue("name")
+	description := r.FormValue("description")
+	startTime := r.FormValue("start_time")
+	endTime := r.FormValue("end_time")
 
-		err := r.ParseForm()
-		if err != nil {
-			log.Println(err)
-		}
+	_, err = database.Exec("UPDATE votingdb.votings set name = ?, description = ?, start_time = ?, end_time = ? WHERE id = ?", name, description, startTime, endTime, id_voting)
+	if err != nil {
+		log.Println(err)
+	}
 
-		id_voting := r.FormValue("id_voting")
-		name := r.FormValue("name")
-		description := r.FormValue("description")
-		startTime := r.FormValue("start_time")
-		endTime := r.FormValue("end_time")
+	http.Redirect(w, r, "/admin/votings/"+id_voting+"/questions/answers", 302)
+}
 
-		_, err = database.Exec("UPDATE votingdb.votings set name = ?, description = ?, start_time = ?, end_time = ? WHERE id = ?", name, description, startTime, endTime, id_voting)
-		if err != nil {
-			log.Println(err)
-		}
+func EditVotingTemplate(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id_voting := vars["id_voting"]
 
-		http.Redirect(w, r, "/admin/voting_qa/"+id_voting, 302)
+	row := database.QueryRow("SELECT * FROM votingdb.votings WHERE id = ?", id_voting)
+
+	voting := Voting{}
+
+	err := row.Scan(&voting.ID, &voting.Name, &voting.Description, &voting.StartTime, &voting.EndTime)
+	if err != nil {
+		log.Println(err)
+		http.Error(w, http.StatusText(404), http.StatusNotFound)
+	} else {
+		tmpl, _ := template.ParseFiles("templates/admin_edit_voting.html")
+		tmpl.Execute(w, voting)
 	}
 }
 
 func EditQuestionHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id_voting := vars["id_voting"]
 
-	if r.Method == "GET" {
-
-		vars := mux.Vars(r)
-		id_question := vars["id_question"]
-
-		row := database.QueryRow("SELECT * FROM votingdb.questions WHERE id = ?", id_question)
-
-		question := Question{}
-
-		err := row.Scan(&question.ID, &question.Name, &question.ID_Voting)
-		if err != nil {
-			log.Println(err)
-			http.Error(w, http.StatusText(404), http.StatusNotFound)
-		} else {
-			tmpl, _ := template.ParseFiles("templates/admin_edit_question.html")
-			tmpl.Execute(w, question)
-		}
+	err := r.ParseForm()
+	if err != nil {
+		log.Println(err)
 	}
 
-	if r.Method == "POST" {
+	id_question := r.FormValue("id_question")
+	name := r.FormValue("name")
 
-		vars := mux.Vars(r)
-		id_voting := vars["id_voting"]
+	_, err = database.Exec("UPDATE votingdb.questions set name = ? WHERE id = ?", name, id_question)
+	if err != nil {
+		log.Println(err)
+	}
+	http.Redirect(w, r, "/admin/votings/"+id_voting+"/questions/"+id_question+"/answers", 302)
+}
 
-		err := r.ParseForm()
-		if err != nil {
-			log.Println(err)
-		}
+func EditQuestionTemplate(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id_question := vars["id_question"]
 
-		id_question := r.FormValue("id_question")
-		name := r.FormValue("name")
+	row := database.QueryRow("SELECT * FROM votingdb.questions WHERE id = ?", id_question)
 
-		_, err = database.Exec("UPDATE votingdb.questions set name = ? WHERE id = ?", name, id_question)
-		if err != nil {
-			log.Println(err)
-		}
-		http.Redirect(w, r, "/admin/open_qa/"+id_voting+"/"+id_question, 302)
+	question := Question{}
+
+	err := row.Scan(&question.ID, &question.Name, &question.ID_Voting)
+	if err != nil {
+		log.Println(err)
+		http.Error(w, http.StatusText(404), http.StatusNotFound)
+	} else {
+		tmpl, _ := template.ParseFiles("templates/admin_edit_question.html")
+		tmpl.Execute(w, question)
 	}
 }
 
 func EditAnswerHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id_question := vars["id_question"]
 
-	if r.Method == "GET" {
-
-		vars := mux.Vars(r)
-		id_answer := vars["id_answer"]
-
-		row := database.QueryRow("SELECT * FROM votingdb.answers WHERE id = ?", id_answer)
-
-		answer := Answer{}
-
-		err := row.Scan(&answer.ID, &answer.Name, &answer.ID_Question)
-		if err != nil {
-			log.Println(err)
-			http.Error(w, http.StatusText(404), http.StatusNotFound)
-		} else {
-			tmpl, _ := template.ParseFiles("templates/admin_edit_answer.html")
-			tmpl.Execute(w, answer)
-		}
+	err := r.ParseForm()
+	if err != nil {
+		log.Println(err)
 	}
 
-	if r.Method == "POST" {
+	id_answer := r.FormValue("id_answer")
+	name := r.FormValue("name")
 
-		vars := mux.Vars(r)
-		id_question := vars["id_question"]
+	_, err = database.Exec("UPDATE votingdb.answers set name = ? WHERE id = ?", name, id_answer)
+	if err != nil {
+		log.Println(err)
+	}
 
-		err := r.ParseForm()
-		if err != nil {
-			log.Println(err)
-		}
+	row := database.QueryRow("SELECT * FROM votingdb.questions WHERE id = ?", id_question)
 
-		id_answer := r.FormValue("id_answer")
-		name := r.FormValue("name")
+	question := Question{}
 
-		_, err = database.Exec("UPDATE votingdb.answers set name = ? WHERE id = ?", name, id_answer)
-		if err != nil {
-			log.Println(err)
-		}
+	err = row.Scan(&question.ID, &question.Name, &question.ID_Voting)
+	if err != nil {
+		log.Println(err)
+		http.Error(w, http.StatusText(404), http.StatusNotFound)
+	} else {
+		id_voting := strconv.Itoa(question.ID_Voting)
+		http.Redirect(w, r, "/admin/votings/"+id_voting+"/questions/"+id_question+"/answers", 302)
+	}
+}
 
-		row := database.QueryRow("SELECT * FROM votingdb.questions WHERE id = ?", id_question)
+func EditAnswerTemplate(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id_answer := vars["id_answer"]
 
-		question := Question{}
+	row := database.QueryRow("SELECT * FROM votingdb.answers WHERE id = ?", id_answer)
 
-		err = row.Scan(&question.ID, &question.Name, &question.ID_Voting)
-		if err != nil {
-			log.Println(err)
-			http.Error(w, http.StatusText(404), http.StatusNotFound)
-		} else {
-			id_voting := strconv.Itoa(question.ID_Voting)
-			http.Redirect(w, r, "/admin/open_qa/"+id_voting+"/"+id_question, 302)
-		}
+	answer := Answer{}
+
+	err := row.Scan(&answer.ID, &answer.Name, &answer.ID_Question)
+	if err != nil {
+		log.Println(err)
+		http.Error(w, http.StatusText(404), http.StatusNotFound)
+	} else {
+		tmpl, _ := template.ParseFiles("templates/admin_edit_answer.html")
+		tmpl.Execute(w, answer)
 	}
 }
 
@@ -765,7 +740,7 @@ func DeleteQuestionHandler(w http.ResponseWriter, r *http.Request) {
 
 	id_voting := strconv.Itoa(idVoting)
 
-	http.Redirect(w, r, "/admin/voting_qa/"+id_voting, 302)
+	http.Redirect(w, r, "/admin/votings/"+id_voting+"/questions/answers", 302)
 }
 
 func DeleteAnswerHandler(w http.ResponseWriter, r *http.Request) {
@@ -796,7 +771,7 @@ func DeleteAnswerHandler(w http.ResponseWriter, r *http.Request) {
 	id_voting := strconv.Itoa(idVoting)
 	id_question := strconv.Itoa(idQuestion)
 
-	http.Redirect(w, r, "/admin/open_qa/"+id_voting+"/"+id_question, 302)
+	http.Redirect(w, r, "/admin/votings/"+id_voting+"/questions/"+id_question+"/answers", 302)
 }
 
 func ConvertInterface(event interface{}) *User {
@@ -877,20 +852,27 @@ func main() {
 	router.HandleFunc("/authentication", AuthenticationHandler)
 	router.HandleFunc("/logout", LogOut)
 
-	router.HandleFunc("/", IndexHandler)
-	router.HandleFunc("/voting_qa/{id_voting:[0-9]+}", VotingQAHandler)
-	router.HandleFunc("result/{id_voting:[0-9]+}", ResultHandler)
-	router.HandleFunc("/admin/voting_qa/{id_voting:[0-9]+}", VotingQAAdminHandler)
-	router.HandleFunc("/admin/create_voting", CreateVotingHandler)
-	router.HandleFunc("/admin/open_qa/{id_voting:[0-9]+}/{id_question:[0-9]+}", OpenQAHandler)
-	router.HandleFunc("/admin/create_question/{id_voting:[0-9]+}", CreateQuestionHandler)
-	router.HandleFunc("/admin/create_answer/{id_voting:[0-9]+}/{id_question:[0-9]+}", CreateAnswerHandler)
-	router.HandleFunc("/admin/edit_voting/{id_voting:[0-9]+}", EditVotingHandler)
-	router.HandleFunc("/admin/edit_question/{id_voting:[0-9]+}/{id_question:[0-9]+}", EditQuestionHandler)
-	router.HandleFunc("/admin/edit_answer/{id_question:[0-9]+}/{id_answer:[0-9]+}", EditAnswerHandler)
-	router.HandleFunc("/admin/delete_voting/{id_voting:[0-9]+}", DeleteVotingHandler)
-	router.HandleFunc("/admin/delete_question/{id_question:[0-9]+}", DeleteQuestionHandler)
-	router.HandleFunc("/admin/delete_answer/{id_answer:[0-9]+}", DeleteAnswerHandler)
+	router.HandleFunc("/", IndexHandler).Methods("GET")
+	router.HandleFunc("/votings/{id_voting:[0-9]+}/questions/answers", VotingQAHandler).Methods("POST")
+	router.HandleFunc("/votings/{id_voting:[0-9]+}/questions/answers", VotingQATemplate).Methods("GET")
+	router.HandleFunc("/votings/{id_voting:[0-9]+}/result", ResultHandler).Methods("GET")
+	router.HandleFunc("/admin/votings/{id_voting:[0-9]+}/questions/answers", VotingQAAdminHandler).Methods("GET")
+	router.HandleFunc("/admin/votings", CreateVotingHandler).Methods("POST")
+	router.HandleFunc("/admin/votings", CreateVotingTemplate).Methods("GET")
+	router.HandleFunc("/admin/votings/{id_voting:[0-9]+}/questions/{id_question:[0-9]+}/answers", OpenQAHandler).Methods("GET")
+	router.HandleFunc("/admin/votings/{id_voting:[0-9]+}/questions", CreateQuestionHandler).Methods("POST")
+	router.HandleFunc("/admin/votings/{id_voting:[0-9]+}/questions", CreateQuestionTemplate).Methods("GET")
+	router.HandleFunc("/admin/votings/{id_voting:[0-9]+}/questions/{id_question:[0-9]+}/answers", CreateAnswerHandler).Methods("POST")
+	router.HandleFunc("/admin/votings/{id_voting:[0-9]+}/questions/{id_question:[0-9]+}/answers", CreateAnswerTemplate).Methods("GET")
+	router.HandleFunc("/admin/votings/{id_voting:[0-9]+}", EditVotingHandler).Methods("PUT")
+	router.HandleFunc("/admin/votings/{id_voting:[0-9]+}", EditVotingTemplate).Methods("GET")
+	router.HandleFunc("/admin/votings/{id_voting:[0-9]+}/questions/{id_question:[0-9]+}", EditQuestionHandler).Methods("PUT")
+	router.HandleFunc("/admin/votings/{id_voting:[0-9]+}/questions/{id_question:[0-9]+}", EditQuestionTemplate).Methods("GET")
+	router.HandleFunc("/admin/questions/{id_question:[0-9]+}/answers/{id_answer:[0-9]+}", EditAnswerHandler).Methods("PUT")
+	router.HandleFunc("/admin/questions/{id_question:[0-9]+}/answers/{id_answer:[0-9]+}", EditAnswerTemplate).Methods("GET")
+	router.HandleFunc("/admin/votings/{id_voting:[0-9]+}", DeleteVotingHandler).Methods("DELETE")
+	router.HandleFunc("/admin/questions/{id_question:[0-9]+}", DeleteQuestionHandler).Methods("DELETE")
+	router.HandleFunc("/admin/answers/{id_answer:[0-9]+}", DeleteAnswerHandler).Methods("DELETE")
 
 	router.Use(cookieMiddleware)
 

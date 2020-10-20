@@ -32,7 +32,7 @@
     </head>
     <body>
          {{if .IsExistRole}}
-        <p><a href="/admin/voting_qa/{{ .Voting.ID}}" class="edit_link">Edit the vote</a></p>
+        <p><a href="/admin/votings/{{ .Voting.ID}}/questions/answers" class="edit_link">Edit the vote</a></p>
         {{end}}
         <p><b>Voting name:</b></p>
         <h3><span class="colorString">{{ .Voting.Name}}</span></h3>
