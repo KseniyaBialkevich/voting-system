@@ -15,7 +15,7 @@
     </head>
     <body>
         <h3>Edit the question</h3>
-        <form method="POST">
+        <form method="PUT">
             <input type="hidden" name="id_question" value="{{ .ID}}" />
             <label>Question title</label><br>
             <input type="text" name="name" value="{{ .Name}}"/><br><br>

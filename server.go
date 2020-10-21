@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"text/template"
@@ -61,6 +62,14 @@ type VotingResult struct {
 
 var database *sql.DB
 
+func serverError(w http.ResponseWriter, err error, statusCode int) {
+	stackTrace := string(debug.Stack())
+	msg := fmt.Sprintf("Error: %s\n%s", err, stackTrace)
+	log.Println(msg)
+
+	http.Error(w, err.Error(), statusCode)
+}
+
 var myToken = make(map[string]int)
 
 func cookieMiddleware(next http.Handler) http.Handler {
@@ -89,8 +98,8 @@ func cookieMiddleware(next http.Handler) http.Handler {
 
 				err := row_user.Scan(&user.ID, &user.Name, &user.Surname, &user.Adress, &user.Role)
 				if err != nil {
-					log.Println(err)
-					http.Error(w, http.StatusText(404), http.StatusNotFound)
+					serverError(w, err, http.StatusNotFound)
+					return
 				}
 
 				oldContext := r.Context()
@@ -100,10 +109,9 @@ func cookieMiddleware(next http.Handler) http.Handler {
 					next.ServeHTTP(w, r)
 				} else if !strings.HasPrefix(path, "/admin") {
 					next.ServeHTTP(w, r.WithContext(newContext))
-					//return
 				} else {
-					log.Println(err)
-					http.Error(w, http.StatusText(403), http.StatusForbidden)
+					serverError(w, err, http.StatusForbidden)
+					return
 				}
 
 			} else {
@@ -120,50 +128,54 @@ func LogOut(w http.ResponseWriter, r *http.Request) { //TODO
 }
 
 func AuthenticationHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method == "POST" {
-		err := r.ParseForm()
-		login := r.FormValue("login")
-		passwordHash := sha256.Sum256([]byte(r.FormValue("password")))
-
-		password := fmt.Sprintf("%x", passwordHash)
-
-		row := database.QueryRow("SELECT * FROM votingdb.authentication WHERE login = ?", login)
-
-		authentication := Authentication{}
-		err = row.Scan(&authentication.ID, &authentication.Login, &authentication.Password, &authentication.ID_User)
-		if err != nil {
-			log.Println(err)
-			http.Error(w, http.StatusText(404), http.StatusNotFound)
-		} else {
-			if password == authentication.Password {
-
-				hash := sha256.New()
-				hash.Write([]byte("hello\n" + login))
-				hashKey := fmt.Sprintf("%x", hash.Sum(nil))
-
-				myToken[hashKey] = authentication.ID_User
-
-				cookie := http.Cookie{
-					Name:  "cookie-name",
-					Value: hashKey,
-					// Path:  "*",
-					// Expires:  time.Now().Add(3 * 24 * time.Hour),
-					// Secure:   true,
-					// HttpOnly: true,
-				}
-
-				http.SetCookie(w, &cookie)
-
-				http.Redirect(w, r, "/", 302)
-			} else {
-				http.Error(w, "login or password entered incorrectly", 400)
-				return
-			}
-		}
-
-	} else {
-		http.ServeFile(w, r, "templates/authentication.html")
+	err := r.ParseForm()
+	if err != nil {
+		serverError(w, err, http.StatusBadRequest)
+		return
 	}
+
+	login := r.FormValue("login")
+	passwordHash := sha256.Sum256([]byte(r.FormValue("password")))
+
+	password := fmt.Sprintf("%x", passwordHash)
+
+	row := database.QueryRow("SELECT * FROM votingdb.authentication WHERE login = ?", login)
+
+	authentication := Authentication{}
+	err = row.Scan(&authentication.ID, &authentication.Login, &authentication.Password, &authentication.ID_User)
+	if err != nil {
+		serverError(w, err, http.StatusNotFound)
+		return
+	} else {
+		if password == authentication.Password {
+			hash := sha256.New()
+			hash.Write([]byte("hello\n" + login))
+			hashKey := fmt.Sprintf("%x", hash.Sum(nil))
+
+			myToken[hashKey] = authentication.ID_User
+
+			cookie := http.Cookie{
+				Name:  "cookie-name",
+				Value: hashKey,
+				// Path:  "*",
+				// Expires:  time.Now().Add(3 * 24 * time.Hour),
+				// Secure:   true,
+				// HttpOnly: true,
+			}
+
+			http.SetCookie(w, &cookie)
+
+			http.Redirect(w, r, "/", 302)
+		} else {
+			err := fmt.Errorf("login or password entered incorrectly")
+			serverError(w, err, http.StatusUnauthorized)
+			return
+		}
+	}
+}
+
+func AuthenticationTemplate(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "templates/authentication.html")
 }
 
 func IndexHandler(w http.ResponseWriter, r *http.Request) {
@@ -174,7 +186,8 @@ func IndexHandler(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := database.Query("SELECT * FROM votingdb.votings")
 	if err != nil {
-		log.Println(err)
+		serverError(w, err, http.StatusNotFound)
+		return
 	}
 
 	defer rows.Close()
@@ -186,9 +199,14 @@ func IndexHandler(w http.ResponseWriter, r *http.Request) {
 
 		err := rows.Scan(&voting.ID, &voting.Name, &voting.Description, &voting.StartTime, &voting.EndTime)
 		if err != nil {
-			log.Println(err)
+			serverError(w, err, http.StatusNotFound)
+			return
+		}
 
-			continue
+		err = rows.Err()
+		if err != nil {
+			serverError(w, err, http.StatusInternalServerError)
+			return
 		}
 
 		votings = append(votings, voting)
@@ -213,16 +231,22 @@ func IndexHandler(w http.ResponseWriter, r *http.Request) {
 
 	tmpl, err := template.ParseFiles("templates/index.html")
 	if err != nil {
-		log.Println(err)
+		serverError(w, err, http.StatusInternalServerError)
+		return
 	}
 
 	tmpl.Execute(w, allVotings)
 }
 
+func CreateVotingTemplate(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "templates/admin_create_voting.html")
+}
+
 func CreateVotingHandler(w http.ResponseWriter, r *http.Request) {
 	err := r.ParseForm()
 	if err != nil {
-		fmt.Println(err)
+		serverError(w, err, http.StatusBadRequest)
+		return
 	}
 
 	name := r.FormValue("name")
@@ -232,20 +256,21 @@ func CreateVotingHandler(w http.ResponseWriter, r *http.Request) {
 
 	_, err = database.Exec("INSERT INTO votingdb.votings (name, description, start_time, end_time) VALUES(?, ?, ?, ?)", name, description, startTime, endTime)
 	if err != nil {
-		log.Println(err)
+		serverError(w, err, http.StatusNotFound)
+		return
 	}
 
 	http.Redirect(w, r, "/admin/votings/{id_voting:[0-9]+}/questions/answers", 302)
 }
 
-func CreateVotingTemplate(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, "templates/admin_create_voting.html")
-}
-
 func VotingQAAdminHandler(w http.ResponseWriter, r *http.Request) {
-
 	vars := mux.Vars(r)
-	id_voting := vars["id_voting"]
+	id_voting, ok := vars["id_voting"]
+	if !ok {
+		err := fmt.Errorf("voting id parametr is not found")
+		serverError(w, err, http.StatusBadRequest)
+		return
+	}
 
 	type QuAns struct {
 		Question Question `json:"question"`
@@ -263,15 +288,16 @@ func VotingQAAdminHandler(w http.ResponseWriter, r *http.Request) {
 
 	err := votingRow.Scan(&voting.ID, &voting.Name, &voting.Description, &voting.StartTime, &voting.EndTime)
 	if err != nil {
-		log.Println(err)
-		http.Error(w, http.StatusText(404), http.StatusNotFound)
+		serverError(w, err, http.StatusNotFound)
+		return
 	}
 
 	resultQA := []QuAns{}
 
 	questiosRows, err := database.Query("SELECT * FROM votingdb.questions WHERE id_voting = ?", id_voting)
 	if err != nil {
-		log.Println(err)
+		serverError(w, err, http.StatusNotFound)
+		return
 	}
 
 	defer questiosRows.Close()
@@ -280,15 +306,22 @@ func VotingQAAdminHandler(w http.ResponseWriter, r *http.Request) {
 		question := Question{}
 		err := questiosRows.Scan(&question.ID, &question.Name, &question.ID_Voting)
 		if err != nil {
-			log.Println(err)
-			continue
+			serverError(w, err, http.StatusNotFound)
+			return
+		}
+
+		err = questiosRows.Err()
+		if err != nil {
+			serverError(w, err, http.StatusInternalServerError)
+			return
 		}
 
 		answers := []Answer{}
 
 		answersRows, err := database.Query("SELECT * FROM votingdb.answers WHERE id_question = ?", question.ID)
 		if err != nil {
-			log.Println(err)
+			serverError(w, err, http.StatusNotFound)
+			return
 		}
 
 		defer answersRows.Close()
@@ -297,10 +330,16 @@ func VotingQAAdminHandler(w http.ResponseWriter, r *http.Request) {
 			answer := Answer{}
 			err := answersRows.Scan(&answer.ID, &answer.Name, &answer.ID_Question)
 			if err != nil {
-				fmt.Println(err)
-				continue
+				serverError(w, err, http.StatusNotFound)
+				return
 			}
 			answers = append(answers, answer)
+		}
+
+		err = questiosRows.Err()
+		if err != nil {
+			serverError(w, err, http.StatusInternalServerError)
+			return
 		}
 
 		qu_ans := QuAns{
@@ -320,48 +359,14 @@ func VotingQAAdminHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, votingQA)
 }
 
-func VotingQAHandler(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id_votingStr := vars["id_voting"]
-	id_voting, _ := strconv.Atoi(id_votingStr)
-
-	context_user := r.Context().Value("user")
-	user := ConvertInterface(context_user)
-
-	err := r.ParseForm()
-	if err != nil {
-		log.Println(err)
-	}
-
-	result := make([][]int, 0)
-
-	for key, values := range r.Form {
-		for _, value := range values {
-			id_question, _ := strconv.Atoi(key)
-			id_answer, _ := strconv.Atoi(value)
-			result = append(result, []int{id_voting, id_question, id_answer, user.ID})
-		}
-	}
-
-	for _, value := range result {
-		id_voting := value[0]
-		id_question := value[1]
-		id_answer := value[2]
-		id_user := value[3]
-		_, err := database.Exec(
-			"INSERT INTO votingdb.voting_results (id_voting, id_question, id_answer, id_user) VALUES(?, ?, ?, ?)",
-			id_voting, id_question, id_answer, id_user)
-		if err != nil {
-			log.Println(err)
-		}
-	}
-
-	http.Redirect(w, r, "/", 302)
-}
-
 func VotingQATemplate(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	id_voting := vars["id_voting"]
+	id_voting, ok := vars["id_voting"]
+	if !ok {
+		err := fmt.Errorf("voting id parametr is not found")
+		serverError(w, err, http.StatusBadRequest)
+		return
+	}
 
 	type QuAns struct {
 		Question Question `json:"question"`
@@ -380,15 +385,16 @@ func VotingQATemplate(w http.ResponseWriter, r *http.Request) {
 
 	err := votingRow.Scan(&voting.ID, &voting.Name, &voting.Description, &voting.StartTime, &voting.EndTime)
 	if err != nil {
-		log.Println(err)
-		http.Error(w, http.StatusText(404), http.StatusNotFound)
+		serverError(w, err, http.StatusNotFound)
+		return
 	}
 
 	resultQA := []QuAns{}
 
 	questiosRows, err := database.Query("SELECT * FROM votingdb.questions WHERE id_voting = ?", id_voting)
 	if err != nil {
-		log.Println(err)
+		serverError(w, err, http.StatusNotFound)
+		return
 	}
 
 	defer questiosRows.Close()
@@ -397,15 +403,16 @@ func VotingQATemplate(w http.ResponseWriter, r *http.Request) {
 		question := Question{}
 		err := questiosRows.Scan(&question.ID, &question.Name, &question.ID_Voting)
 		if err != nil {
-			log.Println(err)
-			continue
+			serverError(w, err, http.StatusNotFound)
+			return
 		}
 
 		answers := []Answer{}
 
 		answersRows, err := database.Query("SELECT * FROM votingdb.answers WHERE id_question = ?", question.ID)
 		if err != nil {
-			log.Println(err)
+			serverError(w, err, http.StatusNotFound)
+			return
 		}
 
 		defer answersRows.Close()
@@ -414,10 +421,17 @@ func VotingQATemplate(w http.ResponseWriter, r *http.Request) {
 			answer := Answer{}
 			err := answersRows.Scan(&answer.ID, &answer.Name, &answer.ID_Question)
 			if err != nil {
-				fmt.Println(err)
-				continue
+				serverError(w, err, http.StatusNotFound)
+				return
 			}
+
 			answers = append(answers, answer)
+		}
+
+		err = answersRows.Err()
+		if err != nil {
+			serverError(w, err, http.StatusInternalServerError)
+			return
 		}
 
 		qu_ans := QuAns{
@@ -426,6 +440,12 @@ func VotingQATemplate(w http.ResponseWriter, r *http.Request) {
 		}
 
 		resultQA = append(resultQA, qu_ans)
+	}
+
+	err = questiosRows.Err()
+	if err != nil {
+		serverError(w, err, http.StatusInternalServerError)
+		return
 	}
 
 	context_user := r.Context().Value("user")
@@ -450,7 +470,54 @@ func VotingQATemplate(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, votingQA)
 }
 
-func ResultHandler(w http.ResponseWriter, r *http.Request) { //TODO
+func VotingQAHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id_votingStr, ok := vars["id_voting"]
+	if !ok {
+		err := fmt.Errorf("voting id parametr is not found")
+		serverError(w, err, http.StatusBadRequest)
+		return
+	}
+
+	id_voting, _ := strconv.Atoi(id_votingStr)
+
+	context_user := r.Context().Value("user")
+	user := ConvertInterface(context_user)
+
+	err := r.ParseForm()
+	if err != nil {
+		serverError(w, err, http.StatusBadRequest)
+		return
+	}
+
+	result := make([][]int, 0)
+
+	for key, values := range r.Form {
+		for _, value := range values {
+			id_question, _ := strconv.Atoi(key)
+			id_answer, _ := strconv.Atoi(value)
+			result = append(result, []int{id_voting, id_question, id_answer, user.ID})
+		}
+	}
+
+	for _, value := range result {
+		id_voting := value[0]
+		id_question := value[1]
+		id_answer := value[2]
+		id_user := value[3]
+		_, err := database.Exec(
+			"INSERT INTO votingdb.voting_results (id_voting, id_question, id_answer, id_user) VALUES(?, ?, ?, ?)",
+			id_voting, id_question, id_answer, id_user)
+		if err != nil {
+			serverError(w, err, http.StatusNotFound)
+			return
+		}
+	}
+
+	http.Redirect(w, r, "/", 302)
+}
+
+func ProgressHandler(w http.ResponseWriter, r *http.Request) { //TODO
 	// vars := mux.Vars(r)
 	// id_voting := vars["id_voting"]
 
@@ -480,7 +547,6 @@ func ResultHandler(w http.ResponseWriter, r *http.Request) { //TODO
 	// )
 
 	//TODO
-
 }
 
 func OpenQAHandler(w http.ResponseWriter, r *http.Request) {
@@ -849,13 +915,14 @@ func main() {
 	defer db.Close()
 
 	router := mux.NewRouter()
-	router.HandleFunc("/authentication", AuthenticationHandler)
+	router.HandleFunc("/authentication", AuthenticationHandler).Methods("POST")
+	router.HandleFunc("/authentication", AuthenticationTemplate).Methods("GET")
 	router.HandleFunc("/logout", LogOut)
 
 	router.HandleFunc("/", IndexHandler).Methods("GET")
 	router.HandleFunc("/votings/{id_voting:[0-9]+}/questions/answers", VotingQAHandler).Methods("POST")
 	router.HandleFunc("/votings/{id_voting:[0-9]+}/questions/answers", VotingQATemplate).Methods("GET")
-	router.HandleFunc("/votings/{id_voting:[0-9]+}/result", ResultHandler).Methods("GET")
+	router.HandleFunc("/votings/{id_voting:[0-9]+}/progress", ProgressHandler).Methods("GET")
 	router.HandleFunc("/admin/votings/{id_voting:[0-9]+}/questions/answers", VotingQAAdminHandler).Methods("GET")
 	router.HandleFunc("/admin/votings", CreateVotingHandler).Methods("POST")
 	router.HandleFunc("/admin/votings", CreateVotingTemplate).Methods("GET")
