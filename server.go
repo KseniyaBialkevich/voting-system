@@ -62,6 +62,8 @@ type VotingResult struct {
 
 var database *sql.DB
 
+var myToken = make(map[string]int)
+
 func serverError(w http.ResponseWriter, err error, statusCode int) {
 	stackTrace := string(debug.Stack())
 	msg := fmt.Sprintf("Error: %s\n%s", err, stackTrace)
@@ -70,7 +72,81 @@ func serverError(w http.ResponseWriter, err error, statusCode int) {
 	http.Error(w, err.Error(), statusCode)
 }
 
-var myToken = make(map[string]int)
+func convertInterface(event interface{}) *User {
+	u := User{}
+	mapstructure.Decode(event, &u)
+	return &u
+}
+
+func deleteQuestions(w http.ResponseWriter, id_voting string) {
+	rowsQuestions, err := database.Query("SELECT * FROM votingdb.questions WHERE id_voting = ?", id_voting)
+	if err != nil {
+		serverError(w, err, http.StatusNotFound)
+		return
+	}
+
+	defer rowsQuestions.Close()
+
+	for rowsQuestions.Next() {
+		question := Question{}
+
+		err := rowsQuestions.Scan(&question.ID, &question.Name, &question.ID_Voting)
+		if err != nil {
+			serverError(w, err, http.StatusNotFound)
+			return
+		}
+
+		id_question := strconv.Itoa(question.ID)
+
+		deleteAnswers(w, id_question)
+
+		_, err = database.Exec("DELETE FROM votingdb.questions WHERE id = ?", id_question)
+		if err != nil {
+			serverError(w, err, http.StatusInternalServerError)
+			return
+		}
+	}
+
+	err = rowsQuestions.Err()
+	if err != nil {
+		serverError(w, err, http.StatusInternalServerError)
+		return
+	}
+}
+
+func deleteAnswers(w http.ResponseWriter, id_question string) {
+	rowsAnswers, err := database.Query("SELECT * FROM votingdb.answers WHERE id_question = ?", id_question)
+	if err != nil {
+		serverError(w, err, http.StatusNotFound)
+		return
+	}
+
+	defer rowsAnswers.Close()
+
+	for rowsAnswers.Next() {
+		answer := Answer{}
+
+		err := rowsAnswers.Scan(&answer.ID, &answer.Name, &answer.ID_Question)
+		if err != nil {
+			serverError(w, err, http.StatusNotFound)
+			return
+		}
+
+		id_answer := answer.ID
+
+		_, err = database.Exec("DELETE FROM votingdb.answers WHERE id = ?", id_answer)
+		if err != nil {
+			serverError(w, err, http.StatusInternalServerError)
+			return
+		}
+	}
+
+	err = rowsAnswers.Err()
+	if err != nil {
+		serverError(w, err, http.StatusInternalServerError)
+		return
+	}
+}
 
 func cookieMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -127,6 +203,10 @@ func LogOut(w http.ResponseWriter, r *http.Request) { //TODO
 	http.Redirect(w, r, "/authentication", 302)
 }
 
+func AuthenticationTemplate(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "templates/authentication.html")
+}
+
 func AuthenticationHandler(w http.ResponseWriter, r *http.Request) {
 	err := r.ParseForm()
 	if err != nil {
@@ -174,10 +254,6 @@ func AuthenticationHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func AuthenticationTemplate(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, "templates/authentication.html")
-}
-
 func IndexHandler(w http.ResponseWriter, r *http.Request) {
 	type AllVotings struct {
 		IsExistRole bool
@@ -214,7 +290,7 @@ func IndexHandler(w http.ResponseWriter, r *http.Request) {
 
 	context_user := r.Context().Value("user")
 
-	user := ConvertInterface(context_user)
+	user := convertInterface(context_user)
 
 	var isExistRole bool
 
@@ -254,13 +330,19 @@ func CreateVotingHandler(w http.ResponseWriter, r *http.Request) {
 	startTime := r.FormValue("start_time")
 	endTime := r.FormValue("end_time")
 
-	_, err = database.Exec("INSERT INTO votingdb.votings (name, description, start_time, end_time) VALUES(?, ?, ?, ?)", name, description, startTime, endTime)
+	result, err := database.Exec("INSERT INTO votingdb.votings (name, description, start_time, end_time) VALUES(?, ?, ?, ?)", name, description, startTime, endTime)
 	if err != nil {
 		serverError(w, err, http.StatusNotFound)
 		return
 	}
 
-	http.Redirect(w, r, "/admin/votings/{id_voting:[0-9]+}/questions/answers", 302)
+	id_voting, err := result.LastInsertId()
+	if err != nil {
+		serverError(w, err, http.StatusNotFound)
+		return
+	}
+
+	http.Redirect(w, r, fmt.Sprintf("/admin/votings/%d/questions/answers", id_voting), 302)
 }
 
 func VotingQAAdminHandler(w http.ResponseWriter, r *http.Request) {
@@ -450,7 +532,7 @@ func VotingQATemplate(w http.ResponseWriter, r *http.Request) {
 
 	context_user := r.Context().Value("user")
 
-	user := ConvertInterface(context_user)
+	user := convertInterface(context_user)
 
 	var isExistRole bool
 
@@ -482,7 +564,7 @@ func VotingQAHandler(w http.ResponseWriter, r *http.Request) {
 	id_voting, _ := strconv.Atoi(id_votingStr)
 
 	context_user := r.Context().Value("user")
-	user := ConvertInterface(context_user)
+	user := convertInterface(context_user)
 
 	err := r.ParseForm()
 	if err != nil {
@@ -550,9 +632,13 @@ func ProgressHandler(w http.ResponseWriter, r *http.Request) { //TODO
 }
 
 func OpenQAHandler(w http.ResponseWriter, r *http.Request) {
-
 	vars := mux.Vars(r)
-	id_question := vars["id_question"]
+	id_question, ok := vars["id_question"]
+	if !ok {
+		err := fmt.Errorf("question id parametr is not found")
+		serverError(w, err, http.StatusBadRequest)
+		return
+	}
 
 	type QAs struct {
 		Question Question `json:"question"`
@@ -565,8 +651,8 @@ func OpenQAHandler(w http.ResponseWriter, r *http.Request) {
 
 	err := row.Scan(&question.ID, &question.Name, &question.ID_Voting)
 	if err != nil {
-		log.Println(err)
-		http.Error(w, http.StatusText(404), http.StatusNotFound)
+		serverError(w, err, http.StatusNotFound)
+		return
 	}
 
 	rows, err := database.Query("SELECT * FROM votingdb.answers WHERE id_question = ?", id_question)
@@ -583,10 +669,17 @@ func OpenQAHandler(w http.ResponseWriter, r *http.Request) {
 
 		err := rows.Scan(&answer.ID, &answer.Name, &answer.ID_Question)
 		if err != nil {
-			log.Println(err)
+			serverError(w, err, http.StatusNotFound)
+			return
 		}
 
 		answers = append(answers, answer)
+	}
+
+	err = rows.Err()
+	if err != nil {
+		serverError(w, err, http.StatusInternalServerError)
+		return
 	}
 
 	qas := QAs{
@@ -598,45 +691,31 @@ func OpenQAHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, qas)
 }
 
-func CreateQuestionHandler(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id_voting := vars["id_voting"]
-
-	err := r.ParseForm()
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	name := r.FormValue("name")
-
-	_, err = database.Exec("INSERT INTO votingdb.questions (name, id_voting) VALUES (?, ?)", name, id_voting)
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	http.Redirect(w, r, "/admin/votings/"+id_voting+"/questions/answers", 302)
-
-}
-
 func CreateQuestionTemplate(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, "templates/admin_create_question.html")
 }
 
-func CreateAnswerHandler(w http.ResponseWriter, r *http.Request) {
+func CreateQuestionHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	id_voting := vars["id_voting"]
-	id_question := vars["id_question"]
+	id_voting, ok := vars["id_voting"]
+	if !ok {
+		err := fmt.Errorf("voting id parametr is not found")
+		serverError(w, err, http.StatusBadRequest)
+		return
+	}
 
 	err := r.ParseForm()
 	if err != nil {
-		fmt.Println(err)
+		serverError(w, err, http.StatusBadRequest)
+		return
 	}
 
-	name := r.FormValue("name")
+	question_name := r.FormValue("name")
 
-	_, err = database.Exec("INSERT INTO votingdb.answers (name, id_question) VALUES (?, ?)", name, id_question)
+	_, err = database.Exec("INSERT INTO votingdb.questions (name, id_voting) VALUES (?, ?)", question_name, id_voting)
 	if err != nil {
-		fmt.Println(err)
+		serverError(w, err, http.StatusNotFound)
+		return
 	}
 
 	http.Redirect(w, r, "/admin/votings/"+id_voting+"/questions/answers", 302)
@@ -647,10 +726,66 @@ func CreateAnswerTemplate(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, "templates/admin_create_answer.html")
 }
 
+func CreateAnswerHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id_voting, ok := vars["id_voting"]
+	if !ok {
+		err := fmt.Errorf("voting id parametr is not found")
+		serverError(w, err, http.StatusBadRequest)
+		return
+	}
+
+	id_question, ok := vars["id_question"]
+	if !ok {
+		err := fmt.Errorf("question id parametr is not found")
+		serverError(w, err, http.StatusBadRequest)
+		return
+	}
+
+	err := r.ParseForm()
+	if err != nil {
+		serverError(w, err, http.StatusBadRequest)
+		return
+	}
+
+	answer_name := r.FormValue("name")
+
+	_, err = database.Exec("INSERT INTO votingdb.answers (name, id_question) VALUES (?, ?)", answer_name, id_question)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	http.Redirect(w, r, "/admin/votings/"+id_voting+"/questions/answers", 302)
+}
+
+func EditVotingTemplate(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id_voting, ok := vars["id_voting"]
+	if !ok {
+		err := fmt.Errorf("voting id parametr is not found")
+		serverError(w, err, http.StatusBadRequest)
+		return
+	}
+
+	row := database.QueryRow("SELECT * FROM votingdb.votings WHERE id = ?", id_voting)
+
+	voting := Voting{}
+
+	err := row.Scan(&voting.ID, &voting.Name, &voting.Description, &voting.StartTime, &voting.EndTime)
+	if err != nil {
+		serverError(w, err, http.StatusNotFound)
+		return
+	} else {
+		tmpl, _ := template.ParseFiles("templates/admin_edit_voting.html")
+		tmpl.Execute(w, voting)
+	}
+}
+
 func EditVotingHandler(w http.ResponseWriter, r *http.Request) {
 	err := r.ParseForm()
 	if err != nil {
-		log.Println(err)
+		serverError(w, err, http.StatusBadRequest)
+		return
 	}
 
 	id_voting := r.FormValue("id_voting")
@@ -659,54 +794,25 @@ func EditVotingHandler(w http.ResponseWriter, r *http.Request) {
 	startTime := r.FormValue("start_time")
 	endTime := r.FormValue("end_time")
 
-	_, err = database.Exec("UPDATE votingdb.votings set name = ?, description = ?, start_time = ?, end_time = ? WHERE id = ?", name, description, startTime, endTime, id_voting)
+	_, err = database.Exec(
+		"UPDATE votingdb.votings set name = ?, description = ?, start_time = ?, end_time = ? WHERE id = ?",
+		name, description, startTime, endTime, id_voting)
 	if err != nil {
-		log.Println(err)
+		serverError(w, err, http.StatusNotFound)
+		return
 	}
 
 	http.Redirect(w, r, "/admin/votings/"+id_voting+"/questions/answers", 302)
 }
 
-func EditVotingTemplate(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id_voting := vars["id_voting"]
-
-	row := database.QueryRow("SELECT * FROM votingdb.votings WHERE id = ?", id_voting)
-
-	voting := Voting{}
-
-	err := row.Scan(&voting.ID, &voting.Name, &voting.Description, &voting.StartTime, &voting.EndTime)
-	if err != nil {
-		log.Println(err)
-		http.Error(w, http.StatusText(404), http.StatusNotFound)
-	} else {
-		tmpl, _ := template.ParseFiles("templates/admin_edit_voting.html")
-		tmpl.Execute(w, voting)
-	}
-}
-
-func EditQuestionHandler(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id_voting := vars["id_voting"]
-
-	err := r.ParseForm()
-	if err != nil {
-		log.Println(err)
-	}
-
-	id_question := r.FormValue("id_question")
-	name := r.FormValue("name")
-
-	_, err = database.Exec("UPDATE votingdb.questions set name = ? WHERE id = ?", name, id_question)
-	if err != nil {
-		log.Println(err)
-	}
-	http.Redirect(w, r, "/admin/votings/"+id_voting+"/questions/"+id_question+"/answers", 302)
-}
-
 func EditQuestionTemplate(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	id_question := vars["id_question"]
+	id_question, ok := vars["id_question"]
+	if !ok {
+		err := fmt.Errorf("question id parametr is not found")
+		serverError(w, err, http.StatusBadRequest)
+		return
+	}
 
 	row := database.QueryRow("SELECT * FROM votingdb.questions WHERE id = ?", id_question)
 
@@ -714,21 +820,77 @@ func EditQuestionTemplate(w http.ResponseWriter, r *http.Request) {
 
 	err := row.Scan(&question.ID, &question.Name, &question.ID_Voting)
 	if err != nil {
-		log.Println(err)
-		http.Error(w, http.StatusText(404), http.StatusNotFound)
+		serverError(w, err, http.StatusNotFound)
+		return
 	} else {
 		tmpl, _ := template.ParseFiles("templates/admin_edit_question.html")
 		tmpl.Execute(w, question)
 	}
 }
 
-func EditAnswerHandler(w http.ResponseWriter, r *http.Request) {
+func EditQuestionHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	id_question := vars["id_question"]
+	id_voting, ok := vars["id_voting"]
+	if !ok {
+		err := fmt.Errorf("voting id parametr is not found")
+		serverError(w, err, http.StatusBadRequest)
+		return
+	}
 
 	err := r.ParseForm()
 	if err != nil {
-		log.Println(err)
+		serverError(w, err, http.StatusBadRequest)
+		return
+	}
+
+	id_question := r.FormValue("id_question")
+	name := r.FormValue("name")
+
+	_, err = database.Exec("UPDATE votingdb.questions set name = ? WHERE id = ?", name, id_question)
+	if err != nil {
+		serverError(w, err, http.StatusNotFound)
+		return
+	}
+
+	http.Redirect(w, r, "/admin/votings/"+id_voting+"/questions/"+id_question+"/answers", 302)
+}
+
+func EditAnswerTemplate(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id_answer, ok := vars["id_answer"]
+	if !ok {
+		err := fmt.Errorf("answer id parametr is not found")
+		serverError(w, err, http.StatusBadRequest)
+		return
+	}
+
+	row := database.QueryRow("SELECT * FROM votingdb.answers WHERE id = ?", id_answer)
+
+	answer := Answer{}
+
+	err := row.Scan(&answer.ID, &answer.Name, &answer.ID_Question)
+	if err != nil {
+		serverError(w, err, http.StatusNotFound)
+		return
+	} else {
+		tmpl, _ := template.ParseFiles("templates/admin_edit_answer.html")
+		tmpl.Execute(w, answer)
+	}
+}
+
+func EditAnswerHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id_question, ok := vars["id_question"]
+	if !ok {
+		err := fmt.Errorf("question id parametr is not found")
+		serverError(w, err, http.StatusBadRequest)
+		return
+	}
+
+	err := r.ParseForm()
+	if err != nil {
+		serverError(w, err, http.StatusBadRequest)
+		return
 	}
 
 	id_answer := r.FormValue("id_answer")
@@ -736,7 +898,8 @@ func EditAnswerHandler(w http.ResponseWriter, r *http.Request) {
 
 	_, err = database.Exec("UPDATE votingdb.answers set name = ? WHERE id = ?", name, id_answer)
 	if err != nil {
-		log.Println(err)
+		serverError(w, err, http.StatusNotFound)
+		return
 	}
 
 	row := database.QueryRow("SELECT * FROM votingdb.questions WHERE id = ?", id_question)
@@ -745,41 +908,28 @@ func EditAnswerHandler(w http.ResponseWriter, r *http.Request) {
 
 	err = row.Scan(&question.ID, &question.Name, &question.ID_Voting)
 	if err != nil {
-		log.Println(err)
-		http.Error(w, http.StatusText(404), http.StatusNotFound)
+		serverError(w, err, http.StatusNotFound)
+		return
 	} else {
-		id_voting := strconv.Itoa(question.ID_Voting)
-		http.Redirect(w, r, "/admin/votings/"+id_voting+"/questions/"+id_question+"/answers", 302)
-	}
-}
-
-func EditAnswerTemplate(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id_answer := vars["id_answer"]
-
-	row := database.QueryRow("SELECT * FROM votingdb.answers WHERE id = ?", id_answer)
-
-	answer := Answer{}
-
-	err := row.Scan(&answer.ID, &answer.Name, &answer.ID_Question)
-	if err != nil {
-		log.Println(err)
-		http.Error(w, http.StatusText(404), http.StatusNotFound)
-	} else {
-		tmpl, _ := template.ParseFiles("templates/admin_edit_answer.html")
-		tmpl.Execute(w, answer)
+		http.Redirect(w, r, fmt.Sprintf("/admin/votings/%d/questions/%s/answers", question.ID_Voting, id_question), 302)
 	}
 }
 
 func DeleteVotingHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	id_voting := vars["id_voting"]
+	id_voting, ok := vars["id_voting"]
+	if !ok {
+		err := fmt.Errorf("voting id parametr is not found")
+		serverError(w, err, http.StatusBadRequest)
+		return
+	}
 
-	DeleteQuestion(id_voting)
+	deleteQuestions(w, id_voting)
 
 	_, err := database.Exec("DELETE FROM votingdb.votings WHERE id = ?", id_voting)
 	if err != nil {
-		log.Println(err)
+		serverError(w, err, http.StatusInternalServerError)
+		return
 	}
 
 	http.Redirect(w, r, "/", 302)
@@ -787,127 +937,70 @@ func DeleteVotingHandler(w http.ResponseWriter, r *http.Request) {
 
 func DeleteQuestionHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	id_question := vars["id_question"]
+	id_question, ok := vars["id_question"]
+	if !ok {
+		err := fmt.Errorf("question id parametr is not found")
+		serverError(w, err, http.StatusBadRequest)
+		return
+	}
 
 	var idVoting int
 	row_voting := database.QueryRow("SELECT id_voting FROM votingdb.questions WHERE id = ?", id_question)
 	err := row_voting.Scan(&idVoting)
 	if err != nil {
-		log.Println(err)
-		http.Error(w, http.StatusText(404), http.StatusNotFound)
+		serverError(w, err, http.StatusNotFound)
+		return
 	}
 
-	DeleteAnswer(id_question)
+	deleteAnswers(w, id_question)
 
 	_, err = database.Exec("DELETE FROM votingdb.questions WHERE id = ?", id_question)
 	if err != nil {
-		log.Println(err)
+		serverError(w, err, http.StatusInternalServerError)
+		return
 	}
 
-	id_voting := strconv.Itoa(idVoting)
-
-	http.Redirect(w, r, "/admin/votings/"+id_voting+"/questions/answers", 302)
+	http.Redirect(w, r, fmt.Sprintf("/admin/votings/%d/questions/answers", idVoting), 302)
 }
 
 func DeleteAnswerHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	id_answer := vars["id_answer"]
+	id_answer, ok := vars["id_answer"]
+	if !ok {
+		err := fmt.Errorf("answer id parametr is not found")
+		serverError(w, err, http.StatusBadRequest)
+		return
+	}
 
 	var idQuestion int
 	row_queestion := database.QueryRow("SELECT id_question FROM votingdb.answers WHERE id = ?", id_answer)
 	err := row_queestion.Scan(&idQuestion)
 	if err != nil {
-		log.Println(err)
-		http.Error(w, http.StatusText(404), http.StatusNotFound)
+		serverError(w, err, http.StatusNotFound)
+		return
 	}
 
 	var idVoting int
 	row_answer := database.QueryRow("SELECT id_voting FROM votingdb.questions WHERE id = ?", idQuestion)
 	err = row_answer.Scan(&idVoting)
 	if err != nil {
-		log.Println(err)
-		http.Error(w, http.StatusText(404), http.StatusNotFound)
+		serverError(w, err, http.StatusNotFound)
+		return
 	}
 
 	_, err = database.Exec("DELETE FROM votingdb.answers WHERE id = ?", id_answer)
 	if err != nil {
-		log.Println(err)
+		serverError(w, err, http.StatusInternalServerError)
+		return
 	}
 
-	id_voting := strconv.Itoa(idVoting)
-	id_question := strconv.Itoa(idQuestion)
-
-	http.Redirect(w, r, "/admin/votings/"+id_voting+"/questions/"+id_question+"/answers", 302)
-}
-
-func ConvertInterface(event interface{}) *User {
-	u := User{}
-	mapstructure.Decode(event, &u)
-	return &u
-}
-
-func DeleteQuestion(id_voting string) {
-	rowsQuestions, err := database.Query("SELECT * FROM votingdb.questions WHERE id_voting = ?", id_voting)
-	if err != nil {
-		log.Println(err)
-	}
-
-	defer rowsQuestions.Close()
-
-	for rowsQuestions.Next() {
-
-		question := Question{}
-
-		err := rowsQuestions.Scan(&question.ID, &question.Name, &question.ID_Voting)
-		if err != nil {
-			log.Println(err)
-
-			continue
-		}
-
-		id_question := strconv.Itoa(question.ID)
-
-		DeleteAnswer(id_question)
-
-		_, err = database.Exec("DELETE FROM votingdb.questions WHERE id = ?", id_question)
-		if err != nil {
-			log.Println(err)
-		}
-	}
-}
-
-func DeleteAnswer(id_question string) {
-	rowsAnswers, err := database.Query("SELECT * FROM votingdb.answers WHERE id_question = ?", id_question)
-	if err != nil {
-		log.Println(err)
-	}
-
-	defer rowsAnswers.Close()
-
-	for rowsAnswers.Next() {
-
-		answer := Answer{}
-
-		err := rowsAnswers.Scan(&answer.ID, &answer.Name, &answer.ID_Question)
-		if err != nil {
-			log.Println(err)
-
-			continue
-		}
-
-		id_answer := answer.ID
-
-		_, err = database.Exec("DELETE FROM votingdb.answers WHERE id = ?", id_answer)
-		if err != nil {
-			log.Println(err)
-		}
-	}
+	http.Redirect(w, r, fmt.Sprintf("/admin/votings/%d/questions/%d/answers", idVoting, idQuestion), 302)
 }
 
 func main() {
 	db, err := sql.Open("mysql", "root:11111111@tcp(localhost:3306)/votingdb")
 	if err != nil {
-		log.Println(err)
+		panic(err)
 	}
 
 	database = db
