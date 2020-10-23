@@ -15,13 +15,13 @@
     </head>
     <body>
         <h3>Edit the question</h3>
-        <form method="PUT">
+        <form method="POST">
             <input type="hidden" name="id_question" value="{{ .ID}}" />
             <label>Question title</label><br>
             <input type="text" name="name" value="{{ .Name}}"/><br><br>
             <input type="submit" value="Save" />
         </form>
         <br><br>
-        <button><a href="/admin/questions/{{ .ID}}" class="delete_button">Delete the question</a></button>
+        <button><a href="/admin/questions/{{ .ID}}/delete" class="delete_button">Delete the question</a></button>
     </body>
 </html>

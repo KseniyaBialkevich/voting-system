@@ -1022,17 +1022,17 @@ func main() {
 	router.HandleFunc("/admin/votings/{id_voting:[0-9]+}/questions/{id_question:[0-9]+}/answers", OpenQAHandler).Methods("GET")
 	router.HandleFunc("/admin/votings/{id_voting:[0-9]+}/questions", CreateQuestionHandler).Methods("POST")
 	router.HandleFunc("/admin/votings/{id_voting:[0-9]+}/questions", CreateQuestionTemplate).Methods("GET")
-	router.HandleFunc("/admin/votings/{id_voting:[0-9]+}/questions/{id_question:[0-9]+}/answers", CreateAnswerHandler).Methods("POST")
-	router.HandleFunc("/admin/votings/{id_voting:[0-9]+}/questions/{id_question:[0-9]+}/answers", CreateAnswerTemplate).Methods("GET")
-	router.HandleFunc("/admin/votings/{id_voting:[0-9]+}", EditVotingHandler).Methods("PUT")
-	router.HandleFunc("/admin/votings/{id_voting:[0-9]+}", EditVotingTemplate).Methods("GET")
-	router.HandleFunc("/admin/votings/{id_voting:[0-9]+}/questions/{id_question:[0-9]+}", EditQuestionHandler).Methods("PUT")
-	router.HandleFunc("/admin/votings/{id_voting:[0-9]+}/questions/{id_question:[0-9]+}", EditQuestionTemplate).Methods("GET")
-	router.HandleFunc("/admin/questions/{id_question:[0-9]+}/answers/{id_answer:[0-9]+}", EditAnswerHandler).Methods("PUT")
-	router.HandleFunc("/admin/questions/{id_question:[0-9]+}/answers/{id_answer:[0-9]+}", EditAnswerTemplate).Methods("GET")
-	router.HandleFunc("/admin/votings/{id_voting:[0-9]+}", DeleteVotingHandler).Methods("DELETE")
-	router.HandleFunc("/admin/questions/{id_question:[0-9]+}", DeleteQuestionHandler).Methods("DELETE")
-	router.HandleFunc("/admin/answers/{id_answer:[0-9]+}", DeleteAnswerHandler).Methods("DELETE")
+	router.HandleFunc("/admin/votings/{id_voting:[0-9]+}/questions/{id_question:[0-9]+}/answer", CreateAnswerHandler).Methods("POST")
+	router.HandleFunc("/admin/votings/{id_voting:[0-9]+}/questions/{id_question:[0-9]+}/answer", CreateAnswerTemplate).Methods("GET")
+	router.HandleFunc("/admin/votings/{id_voting:[0-9]+}/update", EditVotingHandler).Methods("POST")
+	router.HandleFunc("/admin/votings/{id_voting:[0-9]+}/update", EditVotingTemplate).Methods("GET")
+	router.HandleFunc("/admin/votings/{id_voting:[0-9]+}/questions/{id_question:[0-9]+}/update", EditQuestionHandler).Methods("POST")
+	router.HandleFunc("/admin/votings/{id_voting:[0-9]+}/questions/{id_question:[0-9]+}/update", EditQuestionTemplate).Methods("GET")
+	router.HandleFunc("/admin/questions/{id_question:[0-9]+}/answers/{id_answer:[0-9]+}/update", EditAnswerHandler).Methods("POST")
+	router.HandleFunc("/admin/questions/{id_question:[0-9]+}/answers/{id_answer:[0-9]+}/update", EditAnswerTemplate).Methods("GET")
+	router.HandleFunc("/admin/votings/{id_voting:[0-9]+}/delete", DeleteVotingHandler).Methods("GET")
+	router.HandleFunc("/admin/questions/{id_question:[0-9]+}/delete", DeleteQuestionHandler).Methods("GET")
+	router.HandleFunc("/admin/answers/{id_answer:[0-9]+}/delete", DeleteAnswerHandler).Methods("GET")
 
 	router.Use(cookieMiddleware)
 
@@ -1044,4 +1044,5 @@ func main() {
 	if err != nil {
 		log.Println("HTTP Server Error - ", err)
 	}
+
 }

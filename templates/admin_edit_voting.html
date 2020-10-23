@@ -15,7 +15,7 @@
     </head>
     <body>
         <h3>Edit the voting</h3>
-        <form method="PUT">
+        <form method="POST">
             <input type="hidden" name="id_voting" value="{{ .ID}}" />
             <label>Voting name</label><br>
             <input type="text" name="name" value="{{ .Name}}" /><br><br>
@@ -28,6 +28,6 @@
             <input type="submit" value="Save" />
         </form>
         <br><br>
-        <button><a href="/admin/votings/{{ .ID}}" class="delete_button">Delete the voting</a></button>
+        <button><a href="/admin/votings/{{ .ID}}/delete" class="delete_button">Delete the voting</a></button>
     </body>
 </html>
